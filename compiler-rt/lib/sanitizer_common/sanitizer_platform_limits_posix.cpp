@@ -24,7 +24,7 @@
 // Must go after undef _FILE_OFFSET_BITS.
 #include "sanitizer_platform.h"
 
-#if SANITIZER_LINUX || SANITIZER_APPLE || SANITIZER_HAIKU
+#if SANITIZER_LINUX || SANITIZER_APPLE || SANITIZER_HAIKU || SANITIZER_AIX
 // Must go after undef _FILE_OFFSET_BITS.
 #include "sanitizer_glibc_version.h"
 
@@ -61,7 +61,7 @@
 #endif
 
 #if !SANITIZER_ANDROID
-#if !SANITIZER_HAIKU
+#if !SANITIZER_HAIKU && !SANITIZER_AIX
 #include <sys/mount.h>
 #endif
 #include <sys/timeb.h>
@@ -112,7 +112,11 @@ typedef struct user_fpregs elf_fpregset_t;
 #endif
 
 #if !SANITIZER_ANDROID
+#if !SANITIZER_AIX
 #include <ifaddrs.h>
+#else
+#include <netinet/in.h>
+#endif
 #if !SANITIZER_HAIKU
 #include <sys/ucontext.h>
 #include <wordexp.h>
@@ -175,6 +179,17 @@ typedef struct user_fpregs elf_fpregset_t;
 #include <net/ethernet.h>
 #include <sys/filio.h>
 #include <sys/sockio.h>
+#endif
+
+#if SANITIZER_AIX
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include <stropts.h>
+#include <sys/statfs.h>
+#include <netinet/ip_mroute.h>
+#if HAVE_RPC_XDR_H
+#include <tirpc/rpc/xdr.h>
+#endif
 #endif
 
 #if SANITIZER_HAIKU
@@ -563,6 +578,19 @@ unsigned struct_ElfW_Phdr_sz = sizeof(Elf_Phdr);
   unsigned IOCTL_FIONBIO = FIONBIO;
 #if !SANITIZER_HAIKU
   unsigned IOCTL_FIOASYNC = FIOASYNC;
+  unsigned IOCTL_FIONBIO = FIONBIO;
+  unsigned IOCTL_FIOSETOWN = FIOSETOWN;
+  unsigned IOCTL_SIOCSPGRP = SIOCSPGRP;
+  unsigned IOCTL_TIOCCONS = TIOCCONS;
+  unsigned IOCTL_TIOCMBIC = TIOCMBIC;
+  unsigned IOCTL_TIOCMBIS = TIOCMBIS;
+  unsigned IOCTL_TIOCMSET = TIOCMSET;
+  unsigned IOCTL_TIOCPKT = TIOCPKT;
+  unsigned IOCTL_TIOCSETD = TIOCSETD;
+  unsigned IOCTL_TIOCSPGRP = TIOCSPGRP;
+  unsigned IOCTL_TIOCSTI = TIOCSTI;
+  unsigned IOCTL_TIOCSWINSZ = TIOCSWINSZ;
+#endif
   unsigned IOCTL_FIOCLEX = FIOCLEX;
   unsigned IOCTL_FIOGETOWN = FIOGETOWN;
   unsigned IOCTL_FIONCLEX = FIONCLEX;
@@ -601,8 +629,6 @@ unsigned struct_ElfW_Phdr_sz = sizeof(Elf_Phdr);
   unsigned IOCTL_TIOCEXCL = TIOCEXCL;
   unsigned IOCTL_TIOCGPGRP = TIOCGPGRP;
   unsigned IOCTL_TIOCGWINSZ = TIOCGWINSZ;
-  unsigned IOCTL_TIOCMBIC = TIOCMBIC;
-  unsigned IOCTL_TIOCMBIS = TIOCMBIS;
   unsigned IOCTL_TIOCMGET = TIOCMGET;
   unsigned IOCTL_TIOCMSET = TIOCMSET;
   unsigned IOCTL_TIOCNXCL = TIOCNXCL;
@@ -1118,6 +1144,8 @@ COMPILER_CHECK(sizeof(__sanitizer_dirent) <= sizeof(dirent));
 CHECK_SIZE_AND_OFFSET(dirent, d_ino);
 #if SANITIZER_APPLE
 CHECK_SIZE_AND_OFFSET(dirent, d_seekoff);
+#elif SANITIZER_AIX
+CHECK_SIZE_AND_OFFSET(dirent, d_offset);
 #elif SANITIZER_FREEBSD || SANITIZER_HAIKU
 // There is no 'd_off' field on FreeBSD.
 #else
@@ -1208,8 +1236,10 @@ CHECK_SIZE_AND_OFFSET(tm, tm_year);
 CHECK_SIZE_AND_OFFSET(tm, tm_wday);
 CHECK_SIZE_AND_OFFSET(tm, tm_yday);
 CHECK_SIZE_AND_OFFSET(tm, tm_isdst);
+#if !SANITIZER_AIX
 CHECK_SIZE_AND_OFFSET(tm, tm_gmtoff);
 CHECK_SIZE_AND_OFFSET(tm, tm_zone);
+#endif
 
 #if SANITIZER_LINUX
 CHECK_TYPE_SIZE(mntent);
@@ -1261,7 +1291,7 @@ CHECK_TYPE_SIZE(clock_t);
 CHECK_TYPE_SIZE(clockid_t);
 #endif
 
-#if !SANITIZER_ANDROID && !SANITIZER_HAIKU
+#if !SANITIZER_ANDROID && !SANITIZER_HAIKU && !SANITIZER_AIX
 CHECK_TYPE_SIZE(ifaddrs);
 CHECK_SIZE_AND_OFFSET(ifaddrs, ifa_next);
 CHECK_SIZE_AND_OFFSET(ifaddrs, ifa_name);
