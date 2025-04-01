@@ -61,7 +61,7 @@
 #endif
 
 #if !SANITIZER_ANDROID
-#if !SANITIZER_HAIKU && !SANITIZER_AIX
+#if !SANITIZER_AIX && !SANITIZER_HAIKU
 #include <sys/mount.h>
 #endif
 #include <sys/timeb.h>
@@ -181,16 +181,16 @@ typedef struct user_fpregs elf_fpregset_t;
 #include <sys/sockio.h>
 #endif
 
-#if SANITIZER_AIX
-#include <sys/ioctl.h>
-#include <unistd.h>
-#include <stropts.h>
-#include <sys/statfs.h>
-#include <netinet/ip_mroute.h>
-#if HAVE_RPC_XDR_H
-#include <tirpc/rpc/xdr.h>
-#endif
-#endif
+#  if SANITIZER_AIX
+#    include <netinet/ip_mroute.h>
+#    include <stropts.h>
+#    include <sys/ioctl.h>
+#    include <sys/statfs.h>
+#    include <unistd.h>
+#    if HAVE_RPC_XDR_H
+#      include <tirpc/rpc/xdr.h>
+#    endif
+#  endif
 
 #if SANITIZER_HAIKU
 #include <sys/sockio.h>
@@ -590,7 +590,7 @@ unsigned struct_ElfW_Phdr_sz = sizeof(Elf_Phdr);
   unsigned IOCTL_TIOCSPGRP = TIOCSPGRP;
   unsigned IOCTL_TIOCSTI = TIOCSTI;
   unsigned IOCTL_TIOCSWINSZ = TIOCSWINSZ;
-#endif
+#  endif
   unsigned IOCTL_FIOCLEX = FIOCLEX;
   unsigned IOCTL_FIOGETOWN = FIOGETOWN;
   unsigned IOCTL_FIONCLEX = FIONCLEX;
@@ -637,6 +637,7 @@ unsigned struct_ElfW_Phdr_sz = sizeof(Elf_Phdr);
   unsigned IOCTL_TIOCSPGRP = TIOCSPGRP;
   unsigned IOCTL_TIOCSWINSZ = TIOCSWINSZ;
 #if SANITIZER_LINUX && !SANITIZER_ANDROID
+
   unsigned IOCTL_SIOCGETSGCNT = SIOCGETSGCNT;
   unsigned IOCTL_SIOCGETVIFCNT = SIOCGETVIFCNT;
 #endif
@@ -1144,13 +1145,13 @@ COMPILER_CHECK(sizeof(__sanitizer_dirent) <= sizeof(dirent));
 CHECK_SIZE_AND_OFFSET(dirent, d_ino);
 #if SANITIZER_APPLE
 CHECK_SIZE_AND_OFFSET(dirent, d_seekoff);
-#elif SANITIZER_AIX
+#  elif SANITIZER_AIX
 CHECK_SIZE_AND_OFFSET(dirent, d_offset);
 #elif SANITIZER_FREEBSD || SANITIZER_HAIKU
 // There is no 'd_off' field on FreeBSD.
-#else
+#  else
 CHECK_SIZE_AND_OFFSET(dirent, d_off);
-#endif
+#  endif
 CHECK_SIZE_AND_OFFSET(dirent, d_reclen);
 
 #if SANITIZER_GLIBC
@@ -1236,12 +1237,12 @@ CHECK_SIZE_AND_OFFSET(tm, tm_year);
 CHECK_SIZE_AND_OFFSET(tm, tm_wday);
 CHECK_SIZE_AND_OFFSET(tm, tm_yday);
 CHECK_SIZE_AND_OFFSET(tm, tm_isdst);
-#if !SANITIZER_AIX
+#  if !SANITIZER_AIX
 CHECK_SIZE_AND_OFFSET(tm, tm_gmtoff);
 CHECK_SIZE_AND_OFFSET(tm, tm_zone);
-#endif
+#  endif
 
-#if SANITIZER_LINUX
+#  if SANITIZER_LINUX
 CHECK_TYPE_SIZE(mntent);
 CHECK_SIZE_AND_OFFSET(mntent, mnt_fsname);
 CHECK_SIZE_AND_OFFSET(mntent, mnt_dir);
