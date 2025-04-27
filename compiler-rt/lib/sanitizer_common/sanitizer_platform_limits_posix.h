@@ -1159,7 +1159,7 @@ extern unsigned fpos_t_sz;
 // when it can not be determined without including any system headers.
 extern const unsigned IOCTL_NOT_PRESENT;
 
-#  if SANITIZER_AIX
+#if SANITIZER_AIX
 extern uptr IOCTL_FIOASYNC;
 extern uptr IOCTL_FIONBIO;
 extern uptr IOCTL_FIOSETOWN;
@@ -1173,21 +1173,23 @@ extern uptr IOCTL_TIOCSETD;
 extern uptr IOCTL_TIOCSPGRP;
 extern uptr IOCTL_TIOCSTI;
 extern uptr IOCTL_TIOCSWINSZ;
-#  else
+#else
 extern unsigned IOCTL_FIOASYNC;
 extern unsigned IOCTL_FIONBIO;
 extern unsigned IOCTL_FIOSETOWN;
 extern unsigned IOCTL_SIOCSPGRP;
-extern unsigned IOCTL_TIOCCONS;
 extern unsigned IOCTL_TIOCMBIC;
 extern unsigned IOCTL_TIOCMBIS;
 extern unsigned IOCTL_TIOCMSET;
+extern unsigned IOCTL_TIOCSPGRP;
+extern unsigned IOCTL_TIOCSWINSZ;
+#if !SANITIZER_HAIKU
+extern unsigned IOCTL_TIOCCONS;
 extern unsigned IOCTL_TIOCPKT;
 extern unsigned IOCTL_TIOCSETD;
-extern unsigned IOCTL_TIOCSPGRP;
 extern unsigned IOCTL_TIOCSTI;
-extern unsigned IOCTL_TIOCSWINSZ;
-#  endif
+#endif
+#endif
 
 extern unsigned IOCTL_FIOCLEX;
 extern unsigned IOCTL_FIOGETOWN;
@@ -1211,25 +1213,19 @@ extern unsigned IOCTL_SIOCSIFFLAGS;
 extern unsigned IOCTL_SIOCSIFMETRIC;
 extern unsigned IOCTL_SIOCSIFMTU;
 extern unsigned IOCTL_SIOCSIFNETMASK;
-extern unsigned IOCTL_SIOCSPGRP;
 #if !SANITIZER_HAIKU
-extern unsigned IOCTL_TIOCCONS;
 extern unsigned IOCTL_TIOCGETD;
 extern unsigned IOCTL_TIOCNOTTY;
-extern unsigned IOCTL_TIOCPKT;
-extern unsigned IOCTL_TIOCSETD;
-extern unsigned IOCTL_TIOCSTI;
 #endif
 extern unsigned IOCTL_TIOCEXCL;
 extern unsigned IOCTL_TIOCGPGRP;
 extern unsigned IOCTL_TIOCGWINSZ;
 extern unsigned IOCTL_TIOCMGET;
-extern unsigned IOCTL_TIOCMSET;
 extern unsigned IOCTL_TIOCNXCL;
 extern unsigned IOCTL_TIOCOUTQ;
+#if !SANITIZER_AIX
 extern unsigned IOCTL_TIOCSCTTY;
-extern unsigned IOCTL_TIOCSPGRP;
-extern unsigned IOCTL_TIOCSWINSZ;
+#endif
 #if SANITIZER_LINUX && !SANITIZER_ANDROID
 extern unsigned IOCTL_SIOCGETSGCNT;
 extern unsigned IOCTL_SIOCGETVIFCNT;

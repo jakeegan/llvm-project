@@ -575,26 +575,44 @@ unsigned struct_ElfW_Phdr_sz = sizeof(Elf_Phdr);
 
   const unsigned IOCTL_NOT_PRESENT = 0;
 
+  // On AIX, some variables are unsigned long types.
+#if SANITIZER_AIX
+  uptr IOCTL_FIOASYNC = FIOASYNC;
+  uptr IOCTL_FIONBIO = FIONBIO;
+  uptr IOCTL_FIOSETOWN = FIOSETOWN;
+  uptr IOCTL_SIOCSPGRP = SIOCSPGRP;
+  uptr IOCTL_TIOCCONS = TIOCCONS;
+  uptr IOCTL_TIOCMBIC = TIOCMBIC;
+  uptr IOCTL_TIOCMBIS = TIOCMBIS;
+  uptr IOCTL_TIOCMSET = TIOCMSET;
+  uptr IOCTL_TIOCPKT = TIOCPKT;
+  uptr IOCTL_TIOCSETD = TIOCSETD;
+  uptr IOCTL_TIOCSPGRP = TIOCSPGRP;
+  uptr IOCTL_TIOCSTI = TIOCSTI;
+  uptr IOCTL_TIOCSWINSZ = TIOCSWINSZ;
+#else
   unsigned IOCTL_FIONBIO = FIONBIO;
 #if !SANITIZER_HAIKU
   unsigned IOCTL_FIOASYNC = FIOASYNC;
-  unsigned IOCTL_FIONBIO = FIONBIO;
   unsigned IOCTL_FIOSETOWN = FIOSETOWN;
-  unsigned IOCTL_SIOCSPGRP = SIOCSPGRP;
   unsigned IOCTL_TIOCCONS = TIOCCONS;
-  unsigned IOCTL_TIOCMBIC = TIOCMBIC;
-  unsigned IOCTL_TIOCMBIS = TIOCMBIS;
-  unsigned IOCTL_TIOCMSET = TIOCMSET;
   unsigned IOCTL_TIOCPKT = TIOCPKT;
   unsigned IOCTL_TIOCSETD = TIOCSETD;
-  unsigned IOCTL_TIOCSPGRP = TIOCSPGRP;
   unsigned IOCTL_TIOCSTI = TIOCSTI;
+#endif
+  unsigned IOCTL_SIOCSPGRP = SIOCSPGRP;
+  unsigned IOCTL_TIOCMBIC = TIOCMBIC;
+  unsigned IOCTL_TIOCMBIS = TIOCMBIS;
   unsigned IOCTL_TIOCSWINSZ = TIOCSWINSZ;
-#  endif
+  unsigned IOCTL_TIOCMSET = TIOCMSET;
+  unsigned IOCTL_TIOCSPGRP = TIOCSPGRP;
+#endif
+#if !SANITIZER_HAIKU
   unsigned IOCTL_FIOCLEX = FIOCLEX;
   unsigned IOCTL_FIOGETOWN = FIOGETOWN;
   unsigned IOCTL_FIONCLEX = FIONCLEX;
-  unsigned IOCTL_FIOSETOWN = FIOSETOWN;
+  unsigned IOCTL_TIOCGETD = TIOCGETD;
+  unsigned IOCTL_TIOCNOTTY = TIOCNOTTY;
 #endif
   unsigned IOCTL_SIOCADDMULTI = SIOCADDMULTI;
   unsigned IOCTL_SIOCATMARK = SIOCATMARK;
@@ -615,29 +633,17 @@ unsigned struct_ElfW_Phdr_sz = sizeof(Elf_Phdr);
   unsigned IOCTL_SIOCSIFMETRIC = SIOCSIFMETRIC;
   unsigned IOCTL_SIOCSIFMTU = SIOCSIFMTU;
   unsigned IOCTL_SIOCSIFNETMASK = SIOCSIFNETMASK;
-  unsigned IOCTL_SIOCSPGRP = SIOCSPGRP;
-
-#if !SANITIZER_HAIKU
-  unsigned IOCTL_TIOCCONS = TIOCCONS;
-  unsigned IOCTL_TIOCGETD = TIOCGETD;
-  unsigned IOCTL_TIOCNOTTY = TIOCNOTTY;
-  unsigned IOCTL_TIOCPKT = TIOCPKT;
-  unsigned IOCTL_TIOCSETD = TIOCSETD;
-  unsigned IOCTL_TIOCSTI = TIOCSTI;
-#endif
 
   unsigned IOCTL_TIOCEXCL = TIOCEXCL;
   unsigned IOCTL_TIOCGPGRP = TIOCGPGRP;
   unsigned IOCTL_TIOCGWINSZ = TIOCGWINSZ;
   unsigned IOCTL_TIOCMGET = TIOCMGET;
-  unsigned IOCTL_TIOCMSET = TIOCMSET;
   unsigned IOCTL_TIOCNXCL = TIOCNXCL;
   unsigned IOCTL_TIOCOUTQ = TIOCOUTQ;
+#if !SANITIZER_AIX
   unsigned IOCTL_TIOCSCTTY = TIOCSCTTY;
-  unsigned IOCTL_TIOCSPGRP = TIOCSPGRP;
-  unsigned IOCTL_TIOCSWINSZ = TIOCSWINSZ;
+#endif
 #if SANITIZER_LINUX && !SANITIZER_ANDROID
-
   unsigned IOCTL_SIOCGETSGCNT = SIOCGETSGCNT;
   unsigned IOCTL_SIOCGETVIFCNT = SIOCGETVIFCNT;
 #endif
@@ -1033,8 +1039,7 @@ unsigned struct_ElfW_Phdr_sz = sizeof(Elf_Phdr);
 
   const int si_SEGV_MAPERR = SEGV_MAPERR;
   const int si_SEGV_ACCERR = SEGV_ACCERR;
-} // namespace __sanitizer
-
+} // namespace __sanitizer 
 using namespace __sanitizer;
 
 COMPILER_CHECK(sizeof(__sanitizer_pthread_attr_t) >= sizeof(pthread_attr_t));
