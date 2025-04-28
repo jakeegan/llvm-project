@@ -390,7 +390,7 @@ endif()
 
 add_compiler_rt_resource_file(asan_ignorelist asan_ignorelist.txt asan)
 
-On AIX, we need to put asan.link_with_main_exec.txt and asan_cxx.link_with_main_exec.txt
+# On AIX, we need to put asan.link_with_main_exec.txt and asan_cxx.link_with_main_exec.txt
 # to the build and install dir.
 if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
   add_compiler_rt_cfg(asan_symbols asan.link_with_main_exec.txt asan)
