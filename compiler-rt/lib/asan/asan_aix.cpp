@@ -19,6 +19,10 @@
 
 namespace __asan {
 
+void TryReExecWithoutASLR() {
+   // Allowed to fail and do nothing.
+ }
+
 void AsanCheckIncompatibleRT() {}
 
 void AsanCheckDynamicRTPrereqs() {}
