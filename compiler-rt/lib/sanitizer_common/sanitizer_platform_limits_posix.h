@@ -560,9 +560,9 @@ struct __sanitizer_dirent64 {
 extern unsigned struct_sock_fprog_sz;
 #endif
 
-#if SANITIZER_HAIKU
+#  if SANITIZER_HAIKU
 typedef int __sanitizer_clock_t;
-#if SANITIZER_AIX
+#  elif SANITIZER_AIX
 typedef int __sanitizer_clock_t;
 typedef int __sanitizer_clockid_t;
 #  elif defined(__x86_64__) && !defined(_LP64)
@@ -1625,6 +1625,6 @@ extern const int si_SEGV_ACCERR;
 typedef void *__sanitizer_timer_t;
 #  endif
 
-#endif  // SANITIZER_LINUX || SANITIZER_APPLE || SANITIZER_HAIKU
+#endif  // SANITIZER_LINUX || SANITIZER_APPLE || SANITIZER_HAIKU || SANITIZER_AIX
 
 #endif
