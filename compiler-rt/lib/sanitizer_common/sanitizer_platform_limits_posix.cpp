@@ -193,8 +193,8 @@ typedef struct user_fpregs elf_fpregset_t;
 #  endif
 
 #  if SANITIZER_HAIKU
-#    include <sys/sockio.h>
 #    include <sys/ioctl.h>
+#    include <sys/sockio.h>
 #  endif
 
 // Include these after system headers to avoid name clashes and ambiguities.
