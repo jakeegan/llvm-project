@@ -436,8 +436,8 @@ struct __sanitizer_tm {
   int tm_wday;
   int tm_yday;
   int tm_isdst;
-#if !SANITIZER_AIX
-#if SANITIZER_HAIKU
+#  if !SANITIZER_AIX
+#    if SANITIZER_HAIKU
   int tm_gmtoff;
 #else
   long int tm_gmtoff;
@@ -571,7 +571,7 @@ typedef long long __sanitizer_clock_t;
 typedef long __sanitizer_clock_t;
 #  endif
 
-#if SANITIZER_LINUX || SANITIZER_HAIKU
+#  if SANITIZER_LINUX || SANITIZER_HAIKU
 typedef int __sanitizer_clockid_t;
 typedef unsigned long long __sanitizer_eventfd_t;
 #endif
@@ -825,8 +825,8 @@ struct __sanitizer_addrinfo {
   int ai_family;
   int ai_socktype;
   int ai_protocol;
-#if SANITIZER_ANDROID || SANITIZER_APPLE || SANITIZER_HAIKU || SANITIZER_AIX
-#if SANITIZER_AIX // AIX ai_addrlen type is size_t
+#  if SANITIZER_ANDROID || SANITIZER_APPLE || SANITIZER_HAIKU || SANITIZER_AIX
+#    if SANITIZER_AIX  // AIX ai_addrlen type is size_t
   uptr ai_addrlen;
 #    else
   unsigned ai_addrlen;
@@ -1159,7 +1159,7 @@ extern unsigned fpos_t_sz;
 // when it can not be determined without including any system headers.
 extern const unsigned IOCTL_NOT_PRESENT;
 
-#if SANITIZER_AIX
+#  if SANITIZER_AIX
 extern uptr IOCTL_FIOASYNC;
 extern uptr IOCTL_FIONBIO;
 extern uptr IOCTL_FIOSETOWN;
@@ -1173,7 +1173,7 @@ extern uptr IOCTL_TIOCSETD;
 extern uptr IOCTL_TIOCSPGRP;
 extern uptr IOCTL_TIOCSTI;
 extern uptr IOCTL_TIOCSWINSZ;
-#else
+#  else
 extern unsigned IOCTL_FIOASYNC;
 extern unsigned IOCTL_FIONBIO;
 extern unsigned IOCTL_FIOSETOWN;
@@ -1183,13 +1183,13 @@ extern unsigned IOCTL_TIOCMBIS;
 extern unsigned IOCTL_TIOCMSET;
 extern unsigned IOCTL_TIOCSPGRP;
 extern unsigned IOCTL_TIOCSWINSZ;
-#if !SANITIZER_HAIKU
+#    if !SANITIZER_HAIKU
 extern unsigned IOCTL_TIOCCONS;
 extern unsigned IOCTL_TIOCPKT;
 extern unsigned IOCTL_TIOCSETD;
 extern unsigned IOCTL_TIOCSTI;
-#endif
-#endif
+#    endif
+#  endif
 
 extern unsigned IOCTL_FIOCLEX;
 extern unsigned IOCTL_FIOGETOWN;
@@ -1213,20 +1213,20 @@ extern unsigned IOCTL_SIOCSIFFLAGS;
 extern unsigned IOCTL_SIOCSIFMETRIC;
 extern unsigned IOCTL_SIOCSIFMTU;
 extern unsigned IOCTL_SIOCSIFNETMASK;
-#if !SANITIZER_HAIKU
+#  if !SANITIZER_HAIKU
 extern unsigned IOCTL_TIOCGETD;
 extern unsigned IOCTL_TIOCNOTTY;
-#endif
+#  endif
 extern unsigned IOCTL_TIOCEXCL;
 extern unsigned IOCTL_TIOCGPGRP;
 extern unsigned IOCTL_TIOCGWINSZ;
 extern unsigned IOCTL_TIOCMGET;
 extern unsigned IOCTL_TIOCNXCL;
 extern unsigned IOCTL_TIOCOUTQ;
-#if !SANITIZER_AIX
+#  if !SANITIZER_AIX
 extern unsigned IOCTL_TIOCSCTTY;
-#endif
-#if SANITIZER_LINUX && !SANITIZER_ANDROID
+#  endif
+#  if SANITIZER_LINUX && !SANITIZER_ANDROID
 extern unsigned IOCTL_SIOCGETSGCNT;
 extern unsigned IOCTL_SIOCGETVIFCNT;
 #endif
@@ -1625,6 +1625,7 @@ extern const int si_SEGV_ACCERR;
 typedef void *__sanitizer_timer_t;
 #  endif
 
-#endif  // SANITIZER_LINUX || SANITIZER_APPLE || SANITIZER_HAIKU || SANITIZER_AIX
+#endif  // SANITIZER_LINUX || SANITIZER_APPLE || SANITIZER_HAIKU ||
+        // SANITIZER_AIX
 
 #endif

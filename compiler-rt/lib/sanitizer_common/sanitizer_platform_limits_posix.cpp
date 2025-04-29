@@ -61,11 +61,11 @@
 #endif
 
 #if !SANITIZER_ANDROID
-#if !SANITIZER_AIX && !SANITIZER_HAIKU
-#include <sys/mount.h>
-#endif
-#include <sys/timeb.h>
-#include <utmpx.h>
+#    if !SANITIZER_AIX && !SANITIZER_HAIKU
+#      include <sys/mount.h>
+#    endif
+#    include <sys/timeb.h>
+#    include <utmpx.h>
 #endif
 
 #if SANITIZER_LINUX
@@ -112,15 +112,15 @@ typedef struct user_fpregs elf_fpregset_t;
 #endif
 
 #if !SANITIZER_ANDROID
-#if !SANITIZER_AIX
-#include <ifaddrs.h>
-#else
-#include <netinet/in.h>
-#endif
-#if !SANITIZER_HAIKU
-#include <sys/ucontext.h>
-#include <wordexp.h>
-#endif
+#    if !SANITIZER_AIX
+#      include <ifaddrs.h>
+#    else
+#      include <netinet/in.h>
+#    endif
+#    if !SANITIZER_HAIKU
+#      include <sys/ucontext.h>
+#      include <wordexp.h>
+#    endif
 #endif
 
 #if SANITIZER_LINUX
@@ -192,10 +192,10 @@ typedef struct user_fpregs elf_fpregset_t;
 #    endif
 #  endif
 
-#if SANITIZER_HAIKU
-#include <sys/sockio.h>
-#include <sys/ioctl.h>
-#endif
+#  if SANITIZER_HAIKU
+#    include <sys/sockio.h>
+#    include <sys/ioctl.h>
+#  endif
 
 // Include these after system headers to avoid name clashes and ambiguities.
 #  include "sanitizer_common.h"
@@ -576,7 +576,7 @@ unsigned struct_ElfW_Phdr_sz = sizeof(Elf_Phdr);
   const unsigned IOCTL_NOT_PRESENT = 0;
 
   // On AIX, some variables are unsigned long types.
-#if SANITIZER_AIX
+#  if SANITIZER_AIX
   uptr IOCTL_FIOASYNC = FIOASYNC;
   uptr IOCTL_FIONBIO = FIONBIO;
   uptr IOCTL_FIOSETOWN = FIOSETOWN;
@@ -590,30 +590,30 @@ unsigned struct_ElfW_Phdr_sz = sizeof(Elf_Phdr);
   uptr IOCTL_TIOCSPGRP = TIOCSPGRP;
   uptr IOCTL_TIOCSTI = TIOCSTI;
   uptr IOCTL_TIOCSWINSZ = TIOCSWINSZ;
-#else
+#  else
   unsigned IOCTL_FIONBIO = FIONBIO;
-#if !SANITIZER_HAIKU
+#    if !SANITIZER_HAIKU
   unsigned IOCTL_FIOASYNC = FIOASYNC;
   unsigned IOCTL_FIOSETOWN = FIOSETOWN;
   unsigned IOCTL_TIOCCONS = TIOCCONS;
   unsigned IOCTL_TIOCPKT = TIOCPKT;
   unsigned IOCTL_TIOCSETD = TIOCSETD;
   unsigned IOCTL_TIOCSTI = TIOCSTI;
-#endif
+#    endif
   unsigned IOCTL_SIOCSPGRP = SIOCSPGRP;
   unsigned IOCTL_TIOCMBIC = TIOCMBIC;
   unsigned IOCTL_TIOCMBIS = TIOCMBIS;
   unsigned IOCTL_TIOCSWINSZ = TIOCSWINSZ;
   unsigned IOCTL_TIOCMSET = TIOCMSET;
   unsigned IOCTL_TIOCSPGRP = TIOCSPGRP;
-#endif
-#if !SANITIZER_HAIKU
+#  endif
+#  if !SANITIZER_HAIKU
   unsigned IOCTL_FIOCLEX = FIOCLEX;
   unsigned IOCTL_FIOGETOWN = FIOGETOWN;
   unsigned IOCTL_FIONCLEX = FIONCLEX;
   unsigned IOCTL_TIOCGETD = TIOCGETD;
   unsigned IOCTL_TIOCNOTTY = TIOCNOTTY;
-#endif
+#  endif
   unsigned IOCTL_SIOCADDMULTI = SIOCADDMULTI;
   unsigned IOCTL_SIOCATMARK = SIOCATMARK;
   unsigned IOCTL_SIOCDELMULTI = SIOCDELMULTI;
@@ -640,10 +640,10 @@ unsigned struct_ElfW_Phdr_sz = sizeof(Elf_Phdr);
   unsigned IOCTL_TIOCMGET = TIOCMGET;
   unsigned IOCTL_TIOCNXCL = TIOCNXCL;
   unsigned IOCTL_TIOCOUTQ = TIOCOUTQ;
-#if !SANITIZER_AIX
+#  if !SANITIZER_AIX
   unsigned IOCTL_TIOCSCTTY = TIOCSCTTY;
-#endif
-#if SANITIZER_LINUX && !SANITIZER_ANDROID
+#  endif
+#  if SANITIZER_LINUX && !SANITIZER_ANDROID
   unsigned IOCTL_SIOCGETSGCNT = SIOCGETSGCNT;
   unsigned IOCTL_SIOCGETVIFCNT = SIOCGETVIFCNT;
 #endif
@@ -1039,7 +1039,7 @@ unsigned struct_ElfW_Phdr_sz = sizeof(Elf_Phdr);
 
   const int si_SEGV_MAPERR = SEGV_MAPERR;
   const int si_SEGV_ACCERR = SEGV_ACCERR;
-} // namespace __sanitizer 
+  }  // namespace __sanitizer
 using namespace __sanitizer;
 
 COMPILER_CHECK(sizeof(__sanitizer_pthread_attr_t) >= sizeof(pthread_attr_t));
@@ -1152,7 +1152,7 @@ CHECK_SIZE_AND_OFFSET(dirent, d_ino);
 CHECK_SIZE_AND_OFFSET(dirent, d_seekoff);
 #  elif SANITIZER_AIX
 CHECK_SIZE_AND_OFFSET(dirent, d_offset);
-#elif SANITIZER_FREEBSD || SANITIZER_HAIKU
+#  elif SANITIZER_FREEBSD || SANITIZER_HAIKU
 // There is no 'd_off' field on FreeBSD.
 #  else
 CHECK_SIZE_AND_OFFSET(dirent, d_off);
@@ -1297,7 +1297,7 @@ CHECK_TYPE_SIZE(clock_t);
 CHECK_TYPE_SIZE(clockid_t);
 #endif
 
-#if !SANITIZER_ANDROID && !SANITIZER_HAIKU && !SANITIZER_AIX
+#  if !SANITIZER_ANDROID && !SANITIZER_HAIKU && !SANITIZER_AIX
 CHECK_TYPE_SIZE(ifaddrs);
 CHECK_SIZE_AND_OFFSET(ifaddrs, ifa_next);
 CHECK_SIZE_AND_OFFSET(ifaddrs, ifa_name);
