@@ -15,7 +15,7 @@
 #if !defined(__linux__) && !defined(__FreeBSD__) && !defined(__NetBSD__) && \
     !defined(__APPLE__) && !defined(_WIN32) && !defined(__Fuchsia__) &&     \
     !(defined(__sun__) && defined(__svr4__)) && !defined(__HAIKU__) &&      \
-    !defined(__wasi__)
+    !defined(__wasi__) && !defined(_AIX)
 #  error "This operating system is not supported"
 #endif
 
@@ -30,6 +30,12 @@
 #  define SANITIZER_LINUX 1
 #else
 #  define SANITIZER_LINUX 0
+#endif
+
+#if defined(_AIX)
+#  define SANITIZER_AIX 1
+#else
+#  define SANITIZER_AIX 0
 #endif
 
 #if defined(__GLIBC__)
@@ -151,7 +157,7 @@
 
 #define SANITIZER_POSIX                                       \
   (SANITIZER_FREEBSD || SANITIZER_LINUX || SANITIZER_APPLE || \
-   SANITIZER_NETBSD || SANITIZER_SOLARIS || SANITIZER_HAIKU)
+   SANITIZER_NETBSD || SANITIZER_SOLARIS || SANITIZER_HAIKU || SANITIZER_AIX)
 
 #if __LP64__ || defined(_WIN64)
 #  define SANITIZER_WORDSIZE 64
@@ -318,6 +324,13 @@
 #  endif
 #endif
 
+// The beginning of mmap address space.
+#if SANITIZER_AIX && SANITIZER_WORDSIZE == 64
+# define SANITIZER_MMAP_BEGIN 0x0a00000000000000ULL
+#else
+# define SANITIZER_MMAP_BEGIN 0
+#endif
+
 // The range of addresses which can be returned my mmap.
 // FIXME: this value should be different on different platforms.  Larger values
 // will still work but will consume more memory for TwoLevelByteMap.
@@ -405,7 +418,9 @@
 // (ie. same as double) to 128-bit long double.  On those, glibc symbols
 // involving long doubles come in two versions, and we need to pass the
 // correct one to dlvsym when intercepting them.
-#if SANITIZER_LINUX && (SANITIZER_S390 || SANITIZER_PPC32 || SANITIZER_PPC64V1)
+#if SANITIZER_LINUX &&                                        \
+    (SANITIZER_S390 || (SANITIZER_PPC32 && !SANITIZER_AIX) || \
+     SANITIZER_PPC64V1)
 #  define SANITIZER_NLDBL_VERSION "GLIBC_2.4"
 #endif
 

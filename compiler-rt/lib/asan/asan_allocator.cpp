@@ -775,11 +775,17 @@ struct Allocator {
       u8 chunk_state = atomic_load(&m->chunk_state, memory_order_acquire);
       if (chunk_state != CHUNK_ALLOCATED)
         ReportInvalidFree(old_ptr, chunk_state, stack);
-      CHECK_NE(REAL(memcpy), nullptr);
       uptr memcpy_size = Min(new_size, m->UsedSize());
       // If realloc() races with free(), we may start copying freed memory.
       // However, we will report racy double-free later anyway.
+#if !SANITIZER_AIX
+      CHECK_NE(REAL(memcpy), nullptr);
       REAL(memcpy)(new_ptr, old_ptr, memcpy_size);
+#else
+      // AIX currently can't retrieve memcpy's address, we have to use
+      // internal_memcpy here.
+      internal_memcpy(new_ptr, old_ptr, memcpy_size);
+#endif
       Deallocate(old_ptr, 0, 0, stack, FROM_MALLOC);
     }
     return new_ptr;
@@ -802,8 +808,10 @@ struct Allocator {
   void ReportInvalidFree(void *ptr, u8 chunk_state, BufferedStackTrace *stack) {
     if (chunk_state == CHUNK_QUARANTINE)
       ReportDoubleFree((uptr)ptr, stack);
-    else
-      ReportFreeNotMalloced((uptr)ptr, stack);
+    else {
+      if (common_flags()->enable_unmalloced_free_check)
+        ReportFreeNotMalloced((uptr)ptr, stack);
+    }
   }
 
   void CommitBack(AsanThreadLocalMallocStorage *ms, BufferedStackTrace *stack) {

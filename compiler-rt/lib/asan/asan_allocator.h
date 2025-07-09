@@ -198,7 +198,11 @@ const uptr kAllocatorSpace = ~(uptr)0;
 #    endif  // SANITIZER_APPLE
 
 #    if defined(__powerpc64__)
+#      if SANITIZER_AIX
+const uptr kAllocatorSize = 1ULL << 38;  // 256G.
+#      else
 const uptr kAllocatorSize  =  0x20000000000ULL;  // 2T.
+#      endif
 typedef DefaultSizeClassMap SizeClassMap;
 #    elif defined(__aarch64__) && SANITIZER_ANDROID
 // Android needs to support 39, 42 and 48 bit VMA.
@@ -239,7 +243,7 @@ using PrimaryAllocator = PrimaryAllocatorASVT<LocalAddressSpaceView>;
 typedef CompactSizeClassMap SizeClassMap;
 template <typename AddressSpaceViewTy>
 struct AP32 {
-  static const uptr kSpaceBeg = 0;
+  static const uptr kSpaceBeg = SANITIZER_MMAP_BEGIN;
   static const u64 kSpaceSize = SANITIZER_MMAP_RANGE_SIZE;
   static const uptr kMetadataSize = 0;
   typedef __asan::SizeClassMap SizeClassMap;
