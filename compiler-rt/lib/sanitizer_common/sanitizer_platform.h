@@ -311,6 +311,13 @@
 #  endif
 #endif
 
+// The beginning of mmap address space.
+#if SANITIZER_AIX && SANITIZER_WORDSIZE == 64
+# define SANITIZER_MMAP_BEGIN 0x0a00000000000000ULL
+#else
+# define SANITIZER_MMAP_BEGIN 0
+#endif
+
 // The range of addresses which can be returned my mmap.
 // FIXME: this value should be different on different platforms.  Larger values
 // will still work but will consume more memory for TwoLevelByteMap.
