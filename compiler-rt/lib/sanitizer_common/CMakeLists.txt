@@ -37,6 +37,7 @@ set(SANITIZER_SOURCES_NOTERMINATION
   sanitizer_procmaps_solaris.cpp
   sanitizer_range.cpp
   sanitizer_solaris.cpp
+  sanitizer_stoptheworld_aix.cpp
   sanitizer_stoptheworld_fuchsia.cpp
   sanitizer_stoptheworld_mac.cpp
   sanitizer_stoptheworld_win.cpp

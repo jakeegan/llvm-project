@@ -8,6 +8,7 @@ append_list_if(COMPILER_RT_HAS_WNO_FORMAT -Wno-format LSAN_CFLAGS)
 
 set(LSAN_COMMON_SOURCES
   lsan_common.cpp
+  lsan_common_aix.cpp
   lsan_common_fuchsia.cpp
   lsan_common_linux.cpp
   lsan_common_mac.cpp

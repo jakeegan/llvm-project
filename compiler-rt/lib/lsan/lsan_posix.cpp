@@ -14,7 +14,9 @@
 #include "sanitizer_common/sanitizer_platform.h"
 
 #if SANITIZER_POSIX
+#  define tid_t tid_t_temp
 #  include <pthread.h>
+#  undef tid_t
 
 #  include "lsan.h"
 #  include "lsan_allocator.h"
