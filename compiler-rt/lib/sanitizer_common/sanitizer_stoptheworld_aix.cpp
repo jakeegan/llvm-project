@@ -17,6 +17,7 @@
 #include <pthread.h>
 #include <procinfo.h>
 #include <sys/types.h>
+#include <errno.h>
 
 #include "sanitizer_stoptheworld.h"
 #include "sanitizer_placement_new.h"
@@ -43,20 +44,34 @@ class SuspendedThreadsListAIX final : public SuspendedThreadsList {
   InternalMmapVector<SuspendedThreadInfo> threads_;
 };
 
-static void EnumerateThreads(InternalMmapVector<pthread_t> *threads) {
+static bool EnumerateThreads(InternalMmapVector<SuspendedThreadInfo> *threads) {
   struct procsinfo proc_info;
   pid_t pid = getpid();
 
-  getprocs(&proc_info, sizeof(proc_info), nullptr, 0, &pid, 1);
+  if (!getprocs(&proc_info, sizeof(proc_info), nullptr, 0, &pid, 1)) {
+    VReport(1, "LeakSanitizer: getprocs() failed with errno %d\n", errno);
+    return false;
+  }
   int nthreads = proc_info.pi_thcount;
+  if (nthreads <= 0) {
+    VReport(1, "LeakSanitizer: Invalid thread count %d\n", nthreads);
+    return false;
+  }
   InternalMmapVector<thrdsinfo> thrd_info(nthreads);
 
   int actual_threads = getthrds(pid, thrd_info.data(), sizeof(struct thrdsinfo), nullptr, nthreads);
-
-  for (int i = 0; i < actual_threads; i++) {
-    threads->push_back((pthread_t)thrd_info[i].ti_tid);
+  if (!actual_threads) {
+    VReport(1, "LeakSanitizer: getthrds() failed with errno %d\n", errno);
   }
 
+  for (int i = 0; i < actual_threads; i++) {
+    SuspendedThreadInfo info;
+    info.thread = (pthread_t)thrd_info[i].ti_tid;
+    info.tid = thrd_info[i].ti_tid;
+    threads->push_back(info);
+  }
+
+  return true;
 }
 
 struct RunThreadArgs {
@@ -67,17 +82,23 @@ struct RunThreadArgs {
 void *RunThread(void *arg) {
   struct RunThreadArgs *run_args = (struct RunThreadArgs *)arg;
   SuspendedThreadsListAIX suspended_threads_list;
-  InternalMmapVector<pthread_t> threads;
+  InternalMmapVector<SuspendedThreadInfo> threads;
 
-  EnumerateThreads(&threads);
+  if (!EnumerateThreads(&threads)) {
+    VReport(1, "LeakSanitizer: Failed to enumerate threads\n");
+    return nullptr;
+  }
 
   pthread_t thread_self = pthread_self();
 
   for (uptr i = 0; i < threads.size(); ++i) {
-    if (threads[i] == thread_self) continue;
+    if (threads[i].thread == thread_self) continue;
 
-    pthread_suspend_np(threads[i]);
-    suspended_threads_list.Append(threads[i], (tid_t)threads[i]);
+    int ret = pthread_suspend_np(threads[i].thread);
+    if (ret != 0 ) { 
+      VReport(1, "LeakSanitizer: Failed to suspend thread\n");
+    }
+    suspended_threads_list.Append(threads[i].thread, (tid_t)threads[i].tid);
   }
 
   run_args->callback(suspended_threads_list, run_args->argument);
@@ -85,7 +106,10 @@ void *RunThread(void *arg) {
   uptr num_suspended = suspended_threads_list.ThreadCount();
   for (unsigned int i = 0; i < num_suspended; ++i) {
     pthread_t thread = suspended_threads_list.GetThread(i);
-    pthread_continue_np(thread);
+    int ret = pthread_continue_np(thread);
+    if (ret != 0) {
+      VReport(1, "LeakSanitizer: Failed to resume thread\n");
+    }
   }
   return nullptr;
 }
