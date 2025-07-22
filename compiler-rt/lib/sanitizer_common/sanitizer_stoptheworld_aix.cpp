@@ -27,48 +27,42 @@
 namespace __sanitizer {
 
 typedef struct {
-  tid_t tid;
+  ThreadID tid;
   pthread_t thread;
 } SuspendedThreadInfo;
 
 class SuspendedThreadsListAIX final : public SuspendedThreadsList {
  public:
   SuspendedThreadsListAIX() = default;
-  tid_t GetThreadID(uptr index) const override;
+  ThreadID GetThreadID(uptr index) const override;
   pthread_t GetThread(uptr index) const;
   uptr ThreadCount() const override;
   bool ContainsThread(pthread_t thread) const;
-  void Append(pthread_t thread, tid_t tid);
+  void Append(pthread_t thread, ThreadID tid);
 
  private:
   InternalMmapVector<SuspendedThreadInfo> threads_;
 };
 
 static bool EnumerateThreads(InternalMmapVector<SuspendedThreadInfo> *threads) {
-  struct procsinfo proc_info;
-  pid_t pid = getpid();
+  struct __pthrdsinfo pinfo;
+  char regbuf[256];
+  int regbufsize = sizeof(regbuf);
+  pthread_t pthread_id = 0;
 
-  if (!getprocs(&proc_info, sizeof(proc_info), nullptr, 0, &pid, 1)) {
-    VReport(1, "LeakSanitizer: getprocs() failed with errno %d\n", errno);
-    return false;
-  }
-  int nthreads = proc_info.pi_thcount;
-  if (nthreads <= 0) {
-    VReport(1, "LeakSanitizer: Invalid thread count %d\n", nthreads);
-    return false;
-  }
-  InternalMmapVector<thrdsinfo> thrd_info(nthreads);
-
-  int actual_threads = getthrds(pid, thrd_info.data(), sizeof(struct thrdsinfo), nullptr, nthreads);
-  if (!actual_threads) {
-    VReport(1, "LeakSanitizer: getthrds() failed with errno %d\n", errno);
-  }
-
-  for (int i = 0; i < actual_threads; i++) {
+  while (pthread_getthrds_np(&pthread_id, PTHRDSINFO_QUERY_ALL, &pinfo, sizeof(pinfo), regbuf,
+    &regbufsize) == 0) {
     SuspendedThreadInfo info;
-    info.thread = (pthread_t)thrd_info[i].ti_tid;
-    info.tid = thrd_info[i].ti_tid;
+    info.thread = pthread_id;
+    info.tid = pinfo.__pi_tid;
     threads->push_back(info);
+    VReport(1, "LeakSanitizer: thread=%d, tid%d\n", info.thread, info.tid);
+    if (pthread_id == 0) break;
+  }
+
+  if (threads->size() == 0) {
+    VReport(1, "LeakSanitizer: No threads found.\n");
+    return false;
   }
 
   return true;
@@ -86,20 +80,36 @@ void *RunThread(void *arg) {
 
   if (!EnumerateThreads(&threads)) {
     VReport(1, "LeakSanitizer: Failed to enumerate threads\n");
+    run_args->callback(suspended_threads_list, run_args->argument);
     return nullptr;
   }
 
+  VReport(1, "LeakSanitizer: Enumerated %zu threads\n", threads.size());
   pthread_t thread_self = pthread_self();
+  uptr successfully_suspended = 0;
+  VReport(1, "LeakSanitizer: Current thread (RunThread) is %lu\n", (unsigned long)thread_self);
 
   for (uptr i = 0; i < threads.size(); ++i) {
-    if (threads[i].thread == thread_self) continue;
+    VReport(1, "LeakSanitizer: Found thread %lu (tid %lu)\n", (unsigned long)threads[i].thread,
+    (unsigned long)threads[i].tid);
+    if (threads[i].thread == thread_self) {
+      VReport(1, "LeakSanitizer: Skipping current thread %lu\n", (unsigned long)thread_self);
+      continue;
+    }
+
+    VReport(1, "LeakSanitizer: Attempting to suspend thread %lu\n", (unsigned long)threads[i].thread);
 
     int ret = pthread_suspend_np(threads[i].thread);
     if (ret != 0 ) { 
-      VReport(1, "LeakSanitizer: Failed to suspend thread\n");
+      VReport(1, "LeakSanitizer: Failed to suspend thread (thread=%d) with error %d\n",
+      threads[i].thread, ret);
+      continue;
     }
-    suspended_threads_list.Append(threads[i].thread, (tid_t)threads[i].tid);
+    suspended_threads_list.Append(threads[i].thread, (ThreadID)threads[i].tid);
+    successfully_suspended++;
   }
+  VReport(1, "LeakSanitizer: suspended %zu out of %zu threads\n", successfully_suspended,
+  threads.size()-1);
 
   run_args->callback(suspended_threads_list, run_args->argument);
 
@@ -118,11 +128,11 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
   //SuspendedThreadsListAIX dummy;
   //callback(dummy, argument);
   struct RunThreadArgs arg = {callback, argument};
-  pthread_t run_thread = (pthread_t)(reinterpret_cast<uptr>(internal_start_thread(RunThread, &arg)));
-  internal_join_thread(&run_thread);
+  void* run_thread = internal_start_thread(RunThread, &arg);
+  internal_join_thread(run_thread);
 }
 
-tid_t SuspendedThreadsListAIX::GetThreadID(uptr index) const {
+ThreadID SuspendedThreadsListAIX::GetThreadID(uptr index) const {
   CHECK_LT(index, threads_.size());
   return threads_[index].tid;
 }
@@ -143,7 +153,7 @@ bool SuspendedThreadsListAIX::ContainsThread(pthread_t thread) const {
   return false;
 }
 
-void SuspendedThreadsListAIX::Append(pthread_t thread, tid_t tid) {
+void SuspendedThreadsListAIX::Append(pthread_t thread, ThreadID tid) {
   threads_.push_back({tid, thread});
 }
 

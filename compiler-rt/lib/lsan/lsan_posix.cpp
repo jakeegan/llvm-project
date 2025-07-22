@@ -14,9 +14,9 @@
 #include "sanitizer_common/sanitizer_platform.h"
 
 #if SANITIZER_POSIX
-#  define tid_t tid_t_temp
+#  define ThreadID ThreadID_temp
 #  include <pthread.h>
-#  undef tid_t
+#  undef ThreadID
 
 #  include "lsan.h"
 #  include "lsan_allocator.h"
@@ -50,7 +50,7 @@ void ThreadContext::OnStarted(void *arg) {
   dtls_ = args->dtls;
 }
 
-void ThreadStart(u32 tid, tid_t os_id, ThreadType thread_type) {
+void ThreadStart(u32 tid, ThreadID os_id, ThreadType thread_type) {
   OnStartedArgs args;
   GetThreadStackAndTls(tid == kMainTid, &args.stack_begin, &args.stack_end,
                        &args.tls_begin, &args.tls_end);
@@ -59,7 +59,7 @@ void ThreadStart(u32 tid, tid_t os_id, ThreadType thread_type) {
   ThreadContextLsanBase::ThreadStart(tid, os_id, thread_type, &args);
 }
 
-bool GetThreadRangesLocked(tid_t os_id, uptr *stack_begin, uptr *stack_end,
+bool GetThreadRangesLocked(ThreadID os_id, uptr *stack_begin, uptr *stack_end,
                            uptr *tls_begin, uptr *tls_end, uptr *cache_begin,
                            uptr *cache_end, DTLS **dtls) {
   ThreadContext *context = static_cast<ThreadContext *>(

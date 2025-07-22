@@ -340,7 +340,7 @@ void GetThreadStackAndTls(bool main, uptr *stk_begin, uptr *stk_end,
 
 const char *GetEnv(const char *name) { return getenv(name); }
 
-tid_t GetTid() { return thread_self(); }
+ThreadID GetTid() { return thread_self(); }
 
 uptr ReadBinaryName(char *buf, uptr buf_len) {
   struct stat statData;

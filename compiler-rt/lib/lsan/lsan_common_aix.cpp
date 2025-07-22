@@ -43,7 +43,19 @@ void HandleLeaks() {}
 void LockStuffAndStopTheWorld(StopTheWorldCallback callback,
                               CheckForLeaksParam *argument) {
   ScopedStopTheWorldLock lock;
+
+  bool original_success = argument->success;
+
   StopTheWorld(callback, argument);
+
+  if (!argument->success && !original_success){
+    VReport(1, "LeakSanitizer: StopTheWorld failed\n");
+
+    if (flags()->thread_suspend_fail ==0) {
+      argument->success=true;
+      VReport(1, "LeakSanitizer: Continuing leak check without thread suspension\n");
+    }
+  }
 }
 
 LoadedModule *GetLinker() { return nullptr; }
