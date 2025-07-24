@@ -39,6 +39,9 @@ class SuspendedThreadsListAIX final : public SuspendedThreadsList {
   uptr ThreadCount() const override;
   bool ContainsThread(pthread_t thread) const;
   void Append(pthread_t thread, ThreadID tid);
+  PtraceRegistersStatus GetRegistersAndSP(uptr index,
+                                          InternalMmapVector<uptr> *buffer,
+                                          uptr *sp) const override;
 
  private:
   InternalMmapVector<SuspendedThreadInfo> threads_;
@@ -130,6 +133,12 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
   struct RunThreadArgs arg = {callback, argument};
   void* run_thread = internal_start_thread(RunThread, &arg);
   internal_join_thread(run_thread);
+}
+
+PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
+    uptr index, InternalMmapVector<uptr> *buffer, uptr *sp) const {
+
+  return REGISTERS_AVAILABLE;
 }
 
 ThreadID SuspendedThreadsListAIX::GetThreadID(uptr index) const {
