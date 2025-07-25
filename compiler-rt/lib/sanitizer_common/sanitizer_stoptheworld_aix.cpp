@@ -138,6 +138,39 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
 PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
     uptr index, InternalMmapVector<uptr> *buffer, uptr *sp) const {
 
+  CHECK_LT(index, threads_.size());
+  pthread_t thread = threads_[index].thread;
+
+  struct __pthrdsinfo pinfo;
+  char regbuf[1024];
+  int regbufsize = sizeof(regbuf);
+
+  pthread_t search_thread = 0;
+  while (pthread_getthrds_np(&search_thread, PTHRDSINFO_QUERY_ALL,
+                             &pinfo, sizeof(pinfo), regbuf, &regbufsize) == 0) {
+    if (search_thread == thread) break;
+    if (search_thread == 0) break;
+    regbufsize = sizeof(regbuf);
+  }
+
+  constexpr uptr uptr_sz = sizeof(uptr);
+
+  if (regbufsize > 0 && (uptr)regbufsize <= sizeof(regbuf)) {
+    uptr reg_words = RoundUpTo(regbufsize, uptr_sz) / uptr_sz;
+    buffer->resize(reg_words);
+  }
+
+  internal_memcpy(buffer->data(), regbuf, regbufsize);
+
+  if (pinfo.__pi_stackaddr && pinfo.__pi_stacksize) {
+    uptr stack_base = (uptr)pinfo.__pi_stackaddr;
+    uptr stack_size = (uptr)pinfo.__pi_stacksize;
+
+    *sp = stack_base + (stack_size * 3) / 4;
+  } else {
+    return REGISTERS_UNAVAILABLE;
+  }
+
   return REGISTERS_AVAILABLE;
 }
 
