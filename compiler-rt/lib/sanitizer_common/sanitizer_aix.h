@@ -37,6 +37,12 @@ struct MemoryMappingLayoutData {
 
 void ReadProcMaps(ProcSelfMapsBuff *proc_maps);
 
+uptr internal_sigaltstack(const void *ss, void *oss);
+uptr internal_sigprocmask(int how, __sanitizer_sigset_t *set,
+                          __sanitizer_sigset_t *oldset);
+int internal_sigaction_norestorer(int signum, const void *act, void *oldact);
+void internal_sigdelset(__sanitizer_sigset_t *set, int signum);
+
 }  // namespace __sanitizer
 
 #endif  // SANITIZER_AIX

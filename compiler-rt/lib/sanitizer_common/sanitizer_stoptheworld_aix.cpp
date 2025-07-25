@@ -14,189 +14,323 @@
 
 #if SANITIZER_AIX
 
-#include <pthread.h>
-#include <procinfo.h>
 #include <sys/types.h>
+#include <sys/ptrace.h>
+#include <sys/wait.h>
 #include <errno.h>
+#include <sched.h>
+#include <signal.h>
+#include <stddef.h>
+#include <pthread.h>
+#include <sys/pthdebug.h>
 
 #include "sanitizer_stoptheworld.h"
+#include "sanitizer_atomic.h"
+#include "sanitizer_platform_limits_posix.h"
+#include "sanitizer_aix.h"
+#include "sanitizer_posix.h"
 #include "sanitizer_placement_new.h"
 #include "sanitizer_common.h"
 #include "sanitizer_libc.h"
+#include "sanitizer_flags.h"
+#include "sanitizer_mutex.h"
+
+#ifndef __WALL
+#define __WALL 0x40000000
+#endif
+
+#ifndef PT_READ_GPR
+#define PT_READ_GPR 20
+#endif
+
+#define internal_sigaction_norestorer internal_sigaction
 
 namespace __sanitizer {
 
-typedef struct {
-  ThreadID tid;
-  pthread_t thread;
-} SuspendedThreadInfo;
-
 class SuspendedThreadsListAIX final : public SuspendedThreadsList {
  public:
-  SuspendedThreadsListAIX() = default;
+  SuspendedThreadsListAIX() { thread_ids_.reserve(1024); }
   ThreadID GetThreadID(uptr index) const override;
-  pthread_t GetThread(uptr index) const;
   uptr ThreadCount() const override;
-  bool ContainsThread(pthread_t thread) const;
-  void Append(pthread_t thread, ThreadID tid);
+  bool ContainsTid(ThreadID thread_id) const;
+  void Append(ThreadID tid);
   PtraceRegistersStatus GetRegistersAndSP(uptr index,
                                           InternalMmapVector<uptr> *buffer,
                                           uptr *sp) const override;
 
  private:
-  InternalMmapVector<SuspendedThreadInfo> threads_;
+  InternalMmapVector<ThreadID> thread_ids_;
 };
 
-static bool EnumerateThreads(InternalMmapVector<SuspendedThreadInfo> *threads) {
+struct TracerThreadArgument {
+  StopTheWorldCallback callback;
+  void *callback_argument;
+  Mutex mutex;
+  atomic_uintptr_t done;
+  uptr parent_pid;
+};
+
+class ThreadSuspender {
+  public:
+    explicit ThreadSuspender(pid_t pid, TracerThreadArgument *arg) : arg(arg), pid_(pid) {
+      CHECK_GE(pid, 0);
+    }
+  bool SuspendAllThreads();
+  void ResumeAllThreads();
+  void KillAllThreads();
+  SuspendedThreadsListAIX &suspended_threads_list() {
+    return suspended_threads_list_;
+  }
+  TracerThreadArgument *arg;
+
+  private:
+    SuspendedThreadsListAIX suspended_threads_list_;
+    pid_t pid_;
+};
+
+void ThreadSuspender::ResumeAllThreads() {
+  int pterrno;
+  if (!internal_iserror(internal_ptrace(PT_DETACH, pid_, (void *)(uptr)1, 0), &pterrno)) {
+    VReport(2, "Detached from process %d.\n", pid_);
+  } else {
+    VReport(1, "Could not detach from process %d (errno %d).\n", pid_, pterrno);
+  }
+}
+
+void ThreadSuspender::KillAllThreads() {
+  internal_ptrace(PT_KILL, pid_, nullptr, 0);
+}
+
+bool ThreadSuspender::SuspendAllThreads() {
+  int pterrno;
+  if (internal_iserror(internal_ptrace(PT_ATTACH, pid_, nullptr, 0), &pterrno)) {
+    VReport(1, "Could not attach to process %d (errno %d).\n", pid_, pterrno);
+  }
+
+  int status;
+  uptr waitpid_status;
+  HANDLE_EINTR(waitpid_status, internal_waitpid(pid_, &status, 0));
+
+  VReport(2, "Attached to process %d.\n", pid_);
+
   struct __pthrdsinfo pinfo;
   char regbuf[256];
   int regbufsize = sizeof(regbuf);
   pthread_t pthread_id = 0;
 
-  while (pthread_getthrds_np(&pthread_id, PTHRDSINFO_QUERY_ALL, &pinfo, sizeof(pinfo), regbuf,
-    &regbufsize) == 0) {
-    SuspendedThreadInfo info;
-    info.thread = pthread_id;
-    info.tid = pinfo.__pi_tid;
-    threads->push_back(info);
-    VReport(1, "LeakSanitizer: thread=%d, tid%d\n", info.thread, info.tid);
+  while(pthread_getthrds_np(&pthread_id, PTHRDSINFO_QUERY_ALL, &pinfo, sizeof(pinfo), regbuf,
+      &regbufsize) == 0) {
+    suspended_threads_list_.Append(pinfo.__pi_tid);
     if (pthread_id == 0) break;
   }
-
-  if (threads->size() == 0) {
-    VReport(1, "LeakSanitizer: No threads found.\n");
-    return false;
-  }
-
   return true;
 }
 
-struct RunThreadArgs {
-  StopTheWorldCallback callback;
-  void *argument;
+static ThreadSuspender *thread_suspender_instance = nullptr;
+
+static const int kSyncSignals[] = {SIGABRT, SIGILL, SIGFPE, SIGSEGV, SIGBUS, SIGXCPU, SIGXFSZ};
+
+static void TracerThreadDieCallback() {
+  ThreadSuspender *inst = thread_suspender_instance;
+  if (inst && stoptheworld_tracer_pid == internal_getpid()) {
+    inst->KillAllThreads();
+    thread_suspender_instance = nullptr;
+  }
+}
+
+static void TracerThreadSignalHandler(int signum, __sanitizer_siginfo *siginfo, void *uctx) {
+  SignalContext ctx(siginfo, uctx);
+  ThreadSuspender *inst = thread_suspender_instance;
+  if (inst) {
+    if (signum == SIGABRT)
+      inst->KillAllThreads();
+    else
+      inst->ResumeAllThreads();
+    RAW_CHECK(RemoveDieCallback(TracerThreadDieCallback));
+    thread_suspender_instance = nullptr;
+    atomic_store(&inst->arg->done, 1, memory_order_relaxed);
+  }
+  internal__exit((signum == SIGABRT) ? 1 : 2);
+}
+
+static const int kHandlerStackSize = 8192;
+
+static int TracerThread(void* argument) {
+  TracerThreadArgument *tracer_thread_argument = (TracerThreadArgument *)argument;
+
+  if (internal_getppid() != tracer_thread_argument->parent_pid)
+    internal__exit(4);
+
+  tracer_thread_argument->mutex.Lock();
+  tracer_thread_argument->mutex.Unlock();
+
+  RAW_CHECK(AddDieCallback(TracerThreadDieCallback));
+
+  ThreadSuspender thread_suspender(internal_getppid(), tracer_thread_argument);
+  thread_suspender_instance = &thread_suspender;
+
+  InternalMmapVector<char> handler_stack_memory(kHandlerStackSize);
+
+  stack_t handler_stack;
+  internal_memset(&handler_stack, 0, sizeof(handler_stack));
+  handler_stack.ss_sp = handler_stack_memory.data();
+  handler_stack.ss_size = kHandlerStackSize;
+  internal_sigaltstack(&handler_stack, nullptr);
+
+  for (uptr i = 0; i < ARRAY_SIZE(kSyncSignals); i++) {
+    __sanitizer_sigaction act;
+    internal_memset(&act, 0 , sizeof(act));
+    act.sigaction = TracerThreadSignalHandler;
+    act.sa_flags = SA_ONSTACK | SA_SIGINFO;
+    internal_sigaction_norestorer(kSyncSignals[i], &act, 0);
+  }
+
+  int exit_code = 0;
+  if (!thread_suspender.SuspendAllThreads()) {
+    exit_code = 3;
+  } else {
+    tracer_thread_argument->callback(thread_suspender.suspended_threads_list(),
+                                      tracer_thread_argument->callback_argument);
+    thread_suspender.ResumeAllThreads();
+    exit_code = 0;
+  }
+  RAW_CHECK(RemoveDieCallback(TracerThreadDieCallback));
+  thread_suspender_instance = nullptr;
+  atomic_store(&tracer_thread_argument->done, 1, memory_order_relaxed);
+  return exit_code;
+}
+
+class ScopedStackSpaceWithGuard {
+  public:
+    explicit ScopedStackSpaceWithGuard(uptr stack_size) {
+      stack_size_ = stack_size;
+      guard_size_ = GetPageSizeCached();
+      guard_start_ = (uptr)MmapOrDie(stack_size_ + guard_size_, "ScopedStackWithGuard");
+      CHECK(MprotectNoAccess((uptr)guard_start_, guard_size_));
+  }
+  ~ScopedStackSpaceWithGuard() {
+    UnmapOrDie((void *)guard_start_, stack_size_ + guard_size_);
+  }
+  void *Bottom() const {
+    return (void *)(guard_start_ + stack_size_ + guard_size_);
+  }
+
+  private:
+    uptr stack_size_;
+    uptr guard_size_;
+    uptr guard_start_;
 };
 
-void *RunThread(void *arg) {
-  struct RunThreadArgs *run_args = (struct RunThreadArgs *)arg;
-  SuspendedThreadsListAIX suspended_threads_list;
-  InternalMmapVector<SuspendedThreadInfo> threads;
+static __sanitizer_sigset_t blocked_sigset;
+static __sanitizer_sigset_t old_sigset;
 
-  if (!EnumerateThreads(&threads)) {
-    VReport(1, "LeakSanitizer: Failed to enumerate threads\n");
-    run_args->callback(suspended_threads_list, run_args->argument);
-    return nullptr;
+struct ScopedSetTracerPID {
+  explicit ScopedSetTracerPID(uptr tracer_pid) {
+    stoptheworld_tracer_pid = tracer_pid;
+    stoptheworld_tracer_ppid = internal_getpid();
   }
-
-  VReport(1, "LeakSanitizer: Enumerated %zu threads\n", threads.size());
-  pthread_t thread_self = pthread_self();
-  uptr successfully_suspended = 0;
-  VReport(1, "LeakSanitizer: Current thread (RunThread) is %lu\n", (unsigned long)thread_self);
-
-  for (uptr i = 0; i < threads.size(); ++i) {
-    VReport(1, "LeakSanitizer: Found thread %lu (tid %lu)\n", (unsigned long)threads[i].thread,
-    (unsigned long)threads[i].tid);
-    if (threads[i].thread == thread_self) {
-      VReport(1, "LeakSanitizer: Skipping current thread %lu\n", (unsigned long)thread_self);
-      continue;
-    }
-
-    VReport(1, "LeakSanitizer: Attempting to suspend thread %lu\n", (unsigned long)threads[i].thread);
-
-    int ret = pthread_suspend_np(threads[i].thread);
-    if (ret != 0 ) { 
-      VReport(1, "LeakSanitizer: Failed to suspend thread (thread=%d) with error %d\n",
-      threads[i].thread, ret);
-      continue;
-    }
-    suspended_threads_list.Append(threads[i].thread, (ThreadID)threads[i].tid);
-    successfully_suspended++;
+  ~ScopedSetTracerPID() {
+    stoptheworld_tracer_pid = 0;
+    stoptheworld_tracer_ppid = 0;
   }
-  VReport(1, "LeakSanitizer: suspended %zu out of %zu threads\n", successfully_suspended,
-  threads.size()-1);
-
-  run_args->callback(suspended_threads_list, run_args->argument);
-
-  uptr num_suspended = suspended_threads_list.ThreadCount();
-  for (unsigned int i = 0; i < num_suspended; ++i) {
-    pthread_t thread = suspended_threads_list.GetThread(i);
-    int ret = pthread_continue_np(thread);
-    if (ret != 0) {
-      VReport(1, "LeakSanitizer: Failed to resume thread\n");
-    }
-  }
-  return nullptr;
-}
+};
 
 void StopTheWorld(StopTheWorldCallback callback, void *argument) {
   //SuspendedThreadsListAIX dummy;
   //callback(dummy, argument);
-  struct RunThreadArgs arg = {callback, argument};
-  void* run_thread = internal_start_thread(RunThread, &arg);
-  internal_join_thread(run_thread);
+  struct TracerThreadArgument tracer_thread_argument;
+  tracer_thread_argument.callback = callback;
+  tracer_thread_argument.callback_argument = argument;
+  tracer_thread_argument.parent_pid = internal_getpid();
+  atomic_store(&tracer_thread_argument.done, 0, memory_order_relaxed);
+  const uptr kTracerStackSize = 2 * 1024 * 1024;
+  ScopedStackSpaceWithGuard tracer_stack(kTracerStackSize);
+
+  tracer_thread_argument.mutex.Lock();
+
+  internal_sigfillset(&blocked_sigset);
+  for (uptr i = 0; i < ARRAY_SIZE(kSyncSignals); i++)
+    internal_sigdelset(&blocked_sigset, kSyncSignals[i]);
+  int rv = internal_sigprocmask(SIG_BLOCK, &blocked_sigset, &old_sigset);
+  CHECK_EQ(rv, 0);
+  uptr tracer_pid = internal_fork();
+  if (tracer_pid == 0) {
+    internal__exit(TracerThread(&tracer_thread_argument));
+  }
+  internal_sigprocmask(SIG_SETMASK, &old_sigset, 0);
+  int local_errno = 0;
+  if (internal_iserror(tracer_pid, &local_errno)) {
+    tracer_thread_argument.mutex.Unlock();
+  } else {
+    ScopedSetTracerPID scoped_set_tracer_pid(tracer_pid);
+    tracer_thread_argument.mutex.Unlock();
+    while (atomic_load(&tracer_thread_argument.done, memory_order_relaxed) == 0) 
+      sched_yield();
+    for (;;) {
+      uptr waitpid_status = internal_waitpid(tracer_pid, nullptr, __WALL);
+      if (!internal_iserror(waitpid_status, &local_errno))
+        break;
+      if (local_errno == EINTR)
+        continue;
+      break;
+    }
+  }
 }
 
 PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
     uptr index, InternalMmapVector<uptr> *buffer, uptr *sp) const {
+  ThreadID tid = GetThreadID(index);
+  pid_t target_pid = internal_getppid();
 
-  CHECK_LT(index, threads_.size());
-  pthread_t thread = threads_[index].thread;
+  struct {
+    uptr gpr[32];
+    uptr pc;
+    uptr msr;
+    uptr lr;
+    uptr ctr;
+    uptr xer;
+    uptr cr;
+  } aix_regs;
 
-  struct __pthrdsinfo pinfo;
-  char regbuf[1024];
-  int regbufsize = sizeof(regbuf);
+  int pterrno;
 
-  pthread_t search_thread = 0;
-  while (pthread_getthrds_np(&search_thread, PTHRDSINFO_QUERY_ALL,
-                             &pinfo, sizeof(pinfo), regbuf, &regbufsize) == 0) {
-    if (search_thread == thread) break;
-    if (search_thread == 0) break;
-    regbufsize = sizeof(regbuf);
-  }
+  internal_memset(&aix_regs, 0, sizeof(aix_regs));
 
-  constexpr uptr uptr_sz = sizeof(uptr);
-
-  if (regbufsize > 0 && (uptr)regbufsize <= sizeof(regbuf)) {
-    uptr reg_words = RoundUpTo(regbufsize, uptr_sz) / uptr_sz;
-    buffer->resize(reg_words);
-  }
-
-  internal_memcpy(buffer->data(), regbuf, regbufsize);
-
-  if (pinfo.__pi_stackaddr && pinfo.__pi_stacksize) {
-    uptr stack_base = (uptr)pinfo.__pi_stackaddr;
-    uptr stack_size = (uptr)pinfo.__pi_stacksize;
-
-    *sp = stack_base + (stack_size * 3) / 4;
+  uptr stack_pointer;
+  if (internal_iserror(internal_ptrace(PT_READ_GPR, target_pid, (void*)1, &tid), &pterrno)) {
+    return pterrno == ESRCH ? REGISTERS_UNAVAILABLE_FATAL : REGISTERS_UNAVAILABLE;
   } else {
-    return REGISTERS_UNAVAILABLE;
+    stack_pointer = (uptr)internal_ptrace(PT_READ_GPR, target_pid, (void*)1, &tid);
+    *sp = stack_pointer;
+    aix_regs.gpr[1] = stack_pointer;
   }
 
+  buffer->resize(RoundUpTo(sizeof(aix_regs), sizeof(uptr) / sizeof(uptr)));
+  internal_memcpy(buffer->data(), &aix_regs, sizeof(aix_regs));
+    
   return REGISTERS_AVAILABLE;
 }
+ 
 
 ThreadID SuspendedThreadsListAIX::GetThreadID(uptr index) const {
-  CHECK_LT(index, threads_.size());
-  return threads_[index].tid;
-}
-
-pthread_t SuspendedThreadsListAIX::GetThread(uptr index) const {
-  CHECK_LT(index, threads_.size());
-  return threads_[index].thread;
+  CHECK_LT(index, thread_ids_.size());
+  return thread_ids_[index];
 }
 
 uptr SuspendedThreadsListAIX::ThreadCount() const {
-  return threads_.size();
+  return thread_ids_.size();
 }
 
-bool SuspendedThreadsListAIX::ContainsThread(pthread_t thread) const {
-  for (uptr i = 0; i < threads_.size(); i++) {
-    if (threads_[i].thread == thread) return true;
+bool SuspendedThreadsListAIX::ContainsTid(ThreadID thread_id) const {
+  for (uptr i = 0; i < thread_ids_.size(); i++) {
+    if (thread_ids_[i] == thread_id)
+      return true;
   }
   return false;
 }
 
-void SuspendedThreadsListAIX::Append(pthread_t thread, ThreadID tid) {
-  threads_.push_back({tid, thread});
+void SuspendedThreadsListAIX::Append(ThreadID tid) {
+  thread_ids_.push_back(tid);
 }
 
 }  // namespace __sanitizer

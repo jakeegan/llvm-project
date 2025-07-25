@@ -196,6 +196,11 @@ uptr internal_getpid() {
   return _REAL(getpid);
 }
 
+uptr internal_getppid() {
+  DEFINE__REAL(uptr, getppid);
+  return _REAL(getppid);
+}
+
 int internal_dlinfo(void *handle, int request, void *p) { return 0; }
 
 int internal_sigaction(int signum, const void *act, void *oldact) {
@@ -207,6 +212,12 @@ void internal_sigfillset(__sanitizer_sigset_t *set) {
   sigset_t *rset = reinterpret_cast<sigset_t *>(set);
   DEFINE__REAL(void, sigfillset, sigset_t *rset);
   _REAL(sigfillset, rset);
+}
+
+void internal_sigdelset(__sanitizer_sigset_t *set, int signum) {
+  sigset_t *rset = reinterpret_cast<sigset_t *>(set);
+  DEFINE__REAL(void, sigdelset, sigset_t *rset, int signum);
+  _REAL(sigdelset, rset, signum);
 }
 
 uptr internal_sigprocmask(int how, __sanitizer_sigset_t *set,
@@ -237,6 +248,16 @@ uptr internal_execve(const char *filename, char *const argv[],
 uptr internal_waitpid(int pid, int *status, int options) {
   DEFINE__REAL(uptr, waitpid, int pid, int *status, int options);
   return _REAL(waitpid, pid, status, options);
+}
+
+uptr internal_ptrace(int request, int pid, void *addr, void *data) {
+  DEFINE__REAL(uptr, ptrace, int request, int pid, void *addr, void *data);
+  return _REAL(ptrace, request, pid, addr, data);
+}
+
+uptr internal_sigaltstack(const void *ss, void *oss) {
+  DEFINE__REAL(uptr, sigaltstack, const void *ss, void *oss);
+  return _REAL(sigaltstack, ss, oss);
 }
 
 int internal_pthread_join(pthread_t thread, void **status) {
