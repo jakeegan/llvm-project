@@ -24,6 +24,7 @@
 #include <stddef.h>
 #include <pthread.h>
 #include <sys/pthdebug.h>
+#include <sys/procfs.h>
 
 #include "sanitizer_stoptheworld.h"
 #include "sanitizer_atomic.h"
@@ -36,6 +37,8 @@
 #include "sanitizer_flags.h"
 #include "sanitizer_mutex.h"
 
+#include <procinfo.h>
+
 #ifndef __WALL
 #define __WALL 0x40000000
 #endif
@@ -47,9 +50,17 @@
 #if SANITIZER_WORDSIZE == 32
 #define PTRACE_ADDR_CAST(addr) ((int *)(addr))
 #define PTRACE_NULL_ADDR ((int *)nullptr)
+#define GETTHRDS_CALL(pid, buf, index, count) \
+  getthrds(pid, buf, sizeof(thrdsinfo), index, count)
+#define THRDS_STRUCT struct thrdsinfo
+#define TID_TYPE tid_t
 #else
 #define PTRACE_ADDR_CAST(addr) ((long long)(addr))
 #define PTRACE_NULL_ADDR (0LL)
+#define GETTHRDS_CALL(pid, buf, index, count) \
+  getthrds64(pid, buf, sizeof(struct thrdentry64), index, count)
+#define THRDS_STRUCT struct thrdentry64
+#define TID_TYPE tid64_t
 #endif
 
 #define internal_sigaction_norestorer internal_sigaction
@@ -93,17 +104,40 @@ class ThreadSuspender {
   TracerThreadArgument *arg;
 
   private:
+    bool EnumerateThreads();
     SuspendedThreadsListAIX suspended_threads_list_;
     pid_t pid_;
 };
 
+bool ThreadSuspender::EnumerateThreads() {
+  const int kMaxThreads = 1024;
+  THRDS_STRUCT thread_info[kMaxThreads];
+  TID_TYPE index = 0;
+  int count;
+
+  count = GETTHRDS_CALL(pid_, thread_info, &index, kMaxThreads);
+  if (count == -1) {return false;}
+
+  for (int i = 0; i < count; i++) {
+    TID_TYPE tid = thread_info[i].ti_tid;
+    suspended_threads_list_.Append(tid);
+  }
+
+  return suspended_threads_list_.ThreadCount() > 0;
+}
+
 void ThreadSuspender::ResumeAllThreads() {
   int pterrno;
   int reg_buffer;
-  if (!internal_iserror(internal_ptrace(PT_DETACH, pid_, PTRACE_ADDR_CAST(1), 0, &reg_buffer), &pterrno)) {
-    VReport(1, "Detached from process %d.\n", pid_);
-  } else {
-    VReport(1, "Could not detach from process %d (errno %d).\n", pid_, pterrno);
+
+  for (uptr i = 0; i < suspended_threads_list_.ThreadCount(); i++) {
+    ThreadID tid = suspended_threads_list_.GetThreadID(i);
+    if (!internal_iserror(internal_ptrace(PT_DETACH, pid_, PTRACE_ADDR_CAST(1), tid, &reg_buffer),
+                                          &pterrno)) {
+      VReport(1, "Detached from thread");
+    } else {
+      VReport(1, "Could not detatch from thread");
+    }
   }
 }
 
@@ -112,20 +146,28 @@ void ThreadSuspender::KillAllThreads() {
 }
 
 bool ThreadSuspender::SuspendAllThreads() {
-  int pterrno;
-  int reg_buffer;
-  if (internal_iserror(internal_ptrace(PT_ATTACH, pid_, PTRACE_NULL_ADDR, 0, &reg_buffer), &pterrno)) {
-    VReport(1, "Could not attach to process %d (errno %d).\n", pid_, pterrno);
+
+  if (!EnumerateThreads()) {
+    VReport(1, "Failed to enumerate threads.\n");
     return false;
   }
 
-  int status;
-  uptr waitpid_status;
-  HANDLE_EINTR(waitpid_status, internal_waitpid(pid_, &status, 0));
+  int pterrno;
+  int reg_buffer;
+  bool all_attached = true;
 
-  VReport(1, "Attached to process %d.\n", pid_);
-
-  return true;
+  for (uptr i = 0; i < suspended_threads_list_.ThreadCount(); i++) {
+    ThreadID tid = suspended_threads_list_.GetThreadID(i);
+    if (internal_iserror(internal_ptrace(PT_ATTACH, pid_, PTRACE_NULL_ADDR, tid, &reg_buffer),
+      &pterrno)) {
+      all_attached = false;
+      continue;
+    }
+    int status;
+    uptr waitpid_status;
+    HANDLE_EINTR(waitpid_status, internal_waitpid(pid_, &status, 0));
+  }
+  return all_attached;
 }
 
 static ThreadSuspender *thread_suspender_instance = nullptr;
@@ -324,37 +366,7 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
 
 PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
     uptr index, InternalMmapVector<uptr> *buffer, uptr *sp) const {
-  ThreadID tid = GetThreadID(index);
-  pid_t target_pid = internal_getppid();
-
-  struct {
-    uptr gpr[32];
-    uptr pc;
-    uptr msr;
-    uptr lr;
-    uptr ctr;
-    uptr xer;
-    uptr cr;
-  } aix_regs;
-
-  int pterrno;
-
-  internal_memset(&aix_regs, 0, sizeof(aix_regs));
-
-  uptr stack_pointer;
-  int reg_buffer;
-  if (internal_iserror(internal_ptrace(PT_READ_GPR, target_pid, PTRACE_ADDR_CAST(1), tid, &reg_buffer), &pterrno)) {
-    return pterrno == ESRCH ? REGISTERS_UNAVAILABLE_FATAL : REGISTERS_UNAVAILABLE;
-  } else {
-    stack_pointer = reg_buffer;
-    *sp = stack_pointer;
-    aix_regs.gpr[1] = stack_pointer;
-  }
-
-  buffer->resize(RoundUpTo(sizeof(aix_regs), sizeof(uptr)) / sizeof(uptr));
-  internal_memcpy(buffer->data(), &aix_regs, sizeof(aix_regs));
-    
-  return REGISTERS_AVAILABLE;
+  return REGISTERS_UNAVAILABLE;
 }
  
 
