@@ -31,6 +31,7 @@
 #  include <sys/types.h>
 #  include <sys/ucontext.h>
 #  include <unistd.h>
+#  include <sys/ptrace.h>
 
 #  include "interception/interception.h"
 #  include "sanitizer_aix.h"
@@ -42,6 +43,8 @@
 extern char **environ;
 extern char **p_xargv;
 
+//extern "C" int ptrace(int, int32long64_t, int *, int, int *);
+
 namespace __sanitizer {
 
 #  include "sanitizer_syscall_generic.inc"
@@ -50,6 +53,10 @@ static void *GetFuncAddr(const char *name) {
   // FIXME: if we are going to ship dynamic asan library, we may need to search
   // all the loaded modules with RTLD_DEFAULT if RTLD_NEXT failed.
   void *addr = dlsym(RTLD_NEXT, name);
+
+  //if (!addr && internal_strcmp(name, "ptrace") == 0) {
+  //  addr = (void *)ptrace;
+  //}
   return addr;
 }
 
@@ -250,9 +257,14 @@ uptr internal_waitpid(int pid, int *status, int options) {
   return _REAL(waitpid, pid, status, options);
 }
 
-uptr internal_ptrace(int request, int pid, void *addr, void *data) {
-  DEFINE__REAL(uptr, ptrace, int request, int pid, void *addr, void *data);
-  return _REAL(ptrace, request, pid, addr, data);
+#if SANITIZER_WORDSIZE == 32
+uptr internal_ptrace(int request, int pid, int *addr, int data, int* buff) {
+  DEFINE__REAL(int, ptrace, int request, int pid, int *addr, int data, int* buff);
+#else
+uptr internal_ptrace(int request, long long pid, long long addr, int data, int* buff) {
+  DEFINE__REAL(int, ptrace, int request, long long pid, long long addr, int data, int* buff);
+#endif
+  return _REAL(ptrace, request, pid, addr, data, buff);
 }
 
 uptr internal_sigaltstack(const void *ss, void *oss) {

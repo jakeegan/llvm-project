@@ -66,6 +66,8 @@ uptr internal_lseek(fd_t fd, OFF_T offset, int whence);
 
 #if SANITIZER_NETBSD
 uptr internal_ptrace(int request, int pid, void *addr, int data);
+#elif SANITIZER_AIX
+uptr internal_ptrace(int request, int pid, void *addr, int data, int *buff);
 #else
 uptr internal_ptrace(int request, int pid, void *addr, void *data);
 #endif

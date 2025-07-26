@@ -65,7 +65,7 @@ class SuspendedThreadsListAIX final : public SuspendedThreadsList {
 struct TracerThreadArgument {
   StopTheWorldCallback callback;
   void *callback_argument;
-  Mutex mutex;
+  Mutex mutex = Mutex(MutexUnchecked);
   atomic_uintptr_t done;
   uptr parent_pid;
 };
@@ -90,29 +90,33 @@ class ThreadSuspender {
 
 void ThreadSuspender::ResumeAllThreads() {
   int pterrno;
-  if (!internal_iserror(internal_ptrace(PT_DETACH, pid_, (void *)(uptr)1, 0), &pterrno)) {
-    VReport(2, "Detached from process %d.\n", pid_);
+  uptr reg_buffer;
+  if (!internal_iserror(internal_ptrace(PT_DETACH, pid_, (void *)(uptr)1, 0, &reg_buffer), &pterrno)) {
+    VReport(1, "Detached from process %d.\n", pid_);
   } else {
     VReport(1, "Could not detach from process %d (errno %d).\n", pid_, pterrno);
   }
 }
 
 void ThreadSuspender::KillAllThreads() {
-  internal_ptrace(PT_KILL, pid_, nullptr, 0);
+  internal_ptrace(PT_KILL, pid_, nullptr, 0, nullptr);
 }
 
 bool ThreadSuspender::SuspendAllThreads() {
   int pterrno;
-  if (internal_iserror(internal_ptrace(PT_ATTACH, pid_, nullptr, 0), &pterrno)) {
+  uptr reg_buffer;
+  if (internal_iserror(internal_ptrace(PT_ATTACH, pid_, nullptr, 0, &reg_buffer), &pterrno)) {
     VReport(1, "Could not attach to process %d (errno %d).\n", pid_, pterrno);
+    return false;
   }
 
   int status;
   uptr waitpid_status;
   HANDLE_EINTR(waitpid_status, internal_waitpid(pid_, &status, 0));
 
-  VReport(2, "Attached to process %d.\n", pid_);
+  VReport(1, "Attached to process %d.\n", pid_);
 
+/*
   struct __pthrdsinfo pinfo;
   char regbuf[256];
   int regbufsize = sizeof(regbuf);
@@ -123,6 +127,11 @@ bool ThreadSuspender::SuspendAllThreads() {
     suspended_threads_list_.Append(pinfo.__pi_tid);
     if (pthread_id == 0) break;
   }
+  */
+
+  suspended_threads_list_.Append(pid_);
+  VReport(1, "Added main thread %d to suspended list.\n", pid_);
+
   return true;
 }
 
@@ -156,19 +165,28 @@ static void TracerThreadSignalHandler(int signum, __sanitizer_siginfo *siginfo, 
 static const int kHandlerStackSize = 8192;
 
 static int TracerThread(void* argument) {
+  VReport(1, "TracerThread: starting\n");
   TracerThreadArgument *tracer_thread_argument = (TracerThreadArgument *)argument;
 
+  VReport(1, "TracerThread: checking parent pid\n");
   if (internal_getppid() != tracer_thread_argument->parent_pid)
     internal__exit(4);
 
+  tracer_thread_argument->mutex.~Mutex();
+  new (&tracer_thread_argument->mutex) Mutex(MutexUnchecked);
+
+  VReport(1, "TrackerThread: Waiting for mutex\n");
   tracer_thread_argument->mutex.Lock();
   tracer_thread_argument->mutex.Unlock();
 
+  VReport(1, "TracerThread: Adding die callback\n");
   RAW_CHECK(AddDieCallback(TracerThreadDieCallback));
 
+  VReport(1, "TracerThread: Creating ThreadSuspender\n");
   ThreadSuspender thread_suspender(internal_getppid(), tracer_thread_argument);
   thread_suspender_instance = &thread_suspender;
 
+  VReport(1, "TracerThread: Setting up signal stack\n");
   InternalMmapVector<char> handler_stack_memory(kHandlerStackSize);
 
   stack_t handler_stack;
@@ -177,6 +195,7 @@ static int TracerThread(void* argument) {
   handler_stack.ss_size = kHandlerStackSize;
   internal_sigaltstack(&handler_stack, nullptr);
 
+  VReport(1, "TracerThread: Installing signal handlers\n");
   for (uptr i = 0; i < ARRAY_SIZE(kSyncSignals); i++) {
     __sanitizer_sigaction act;
     internal_memset(&act, 0 , sizeof(act));
@@ -185,6 +204,7 @@ static int TracerThread(void* argument) {
     internal_sigaction_norestorer(kSyncSignals[i], &act, 0);
   }
 
+  VReport(1, "TracerThread: About to call SuspendAllThreads\n");
   int exit_code = 0;
   if (!thread_suspender.SuspendAllThreads()) {
     exit_code = 3;
@@ -192,6 +212,7 @@ static int TracerThread(void* argument) {
     tracer_thread_argument->callback(thread_suspender.suspended_threads_list(),
                                       tracer_thread_argument->callback_argument);
     thread_suspender.ResumeAllThreads();
+    VReport(1, "TracerThread: Threads resumed.\n");
     exit_code = 0;
   }
   RAW_CHECK(RemoveDieCallback(TracerThreadDieCallback));
@@ -238,6 +259,8 @@ struct ScopedSetTracerPID {
 void StopTheWorld(StopTheWorldCallback callback, void *argument) {
   //SuspendedThreadsListAIX dummy;
   //callback(dummy, argument);
+  //return;
+  VReport(1, "LeakSanitizer: Stopping the world.\n");
   struct TracerThreadArgument tracer_thread_argument;
   tracer_thread_argument.callback = callback;
   tracer_thread_argument.callback_argument = argument;
@@ -253,10 +276,13 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
     internal_sigdelset(&blocked_sigset, kSyncSignals[i]);
   int rv = internal_sigprocmask(SIG_BLOCK, &blocked_sigset, &old_sigset);
   CHECK_EQ(rv, 0);
+  VReport(1, "StopTheWorld: Forking tracer process.\n");
   uptr tracer_pid = internal_fork();
   if (tracer_pid == 0) {
+    VReport(1, "StopTheWorld: In tracer process, calling TracerThread.\n");
     internal__exit(TracerThread(&tracer_thread_argument));
   }
+  VReport(1, "StopTheWorld: Tracer forked with PID %lu.\n", tracer_pid);
   internal_sigprocmask(SIG_SETMASK, &old_sigset, 0);
   int local_errno = 0;
   if (internal_iserror(tracer_pid, &local_errno)) {
@@ -297,15 +323,16 @@ PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
   internal_memset(&aix_regs, 0, sizeof(aix_regs));
 
   uptr stack_pointer;
-  if (internal_iserror(internal_ptrace(PT_READ_GPR, target_pid, (void*)1, &tid), &pterrno)) {
+  uptr reg_buffer;
+  if (internal_iserror(internal_ptrace(PT_READ_GPR, target_pid, (void*)1, tid, &reg_buffer), &pterrno)) {
     return pterrno == ESRCH ? REGISTERS_UNAVAILABLE_FATAL : REGISTERS_UNAVAILABLE;
   } else {
-    stack_pointer = (uptr)internal_ptrace(PT_READ_GPR, target_pid, (void*)1, &tid);
+    stack_pointer = reg_buffer;
     *sp = stack_pointer;
     aix_regs.gpr[1] = stack_pointer;
   }
 
-  buffer->resize(RoundUpTo(sizeof(aix_regs), sizeof(uptr) / sizeof(uptr)));
+  buffer->resize(RoundUpTo(sizeof(aix_regs), sizeof(uptr)) / sizeof(uptr));
   internal_memcpy(buffer->data(), &aix_regs, sizeof(aix_regs));
     
   return REGISTERS_AVAILABLE;

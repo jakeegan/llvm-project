@@ -17,6 +17,7 @@
 #if SANITIZER_AIX
 
 #  include <dlfcn.h>  // for dlsym()
+#  include "sanitizer_common/sanitizer_libc.h"
 
 namespace __interception {
 
