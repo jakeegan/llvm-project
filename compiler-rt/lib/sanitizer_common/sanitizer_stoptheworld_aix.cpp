@@ -17,6 +17,7 @@
 #include <sys/types.h>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
+#include <sys/mman.h>
 #include <errno.h>
 #include <sched.h>
 #include <signal.h>
@@ -124,30 +125,6 @@ bool ThreadSuspender::SuspendAllThreads() {
 
   VReport(1, "Attached to process %d.\n", pid_);
 
-  struct __pthrdsinfo pinfo;
-  char regbuf[256];
-  int regbufsize = sizeof(regbuf);
-  pthread_t pthread_id = 0;
-  int thread_count = 0;
-
-  VReport(1, "Enumerating threads\n");
-  while(pthread_getthrds_np(&pthread_id, PTHRDSINFO_QUERY_ALL, &pinfo, sizeof(pinfo), regbuf,
-      &regbufsize) == 0) {
-    thread_count++;
-    VReport(1, "Found thread: tid=%d, state=%d\n", pinfo.__pi_tid, pinfo.__pi_state);
-    suspended_threads_list_.Append(pinfo.__pi_tid);
-    regbufsize = sizeof(regbuf);
-    if (pthread_id == 0) break;
-  }
-
-  VReport(1, "Thread enumeration complete. Found %d threads.\n", thread_count);
-
-  if (thread_count == 0) {
-    VReport(1, "No threads found, adding main thread %d\n", pid_);
-    suspended_threads_list_.Append(pid_);
-  }
-  suspended_threads_list_.Append(pid_);
-  VReport(1, "Main thread is %d\n", pid_);
   return true;
 }
 
@@ -238,7 +215,7 @@ static int TracerThread(void* argument) {
   RAW_CHECK(RemoveDieCallback(TracerThreadDieCallback));
   thread_suspender_instance = nullptr;
   VReport(1, "TracerThread: Setting done flag\n");
-  atomic_store(&tracer_thread_argument->done, 1, memory_order_relaxed);
+  atomic_store(&tracer_thread_argument->done, 1, memory_order_release);
   return exit_code;
 }
 
@@ -282,15 +259,18 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
   //callback(dummy, argument);
   //return;
   VReport(1, "LeakSanitizer: Stopping the world.\n");
-  struct TracerThreadArgument tracer_thread_argument;
-  tracer_thread_argument.callback = callback;
-  tracer_thread_argument.callback_argument = argument;
-  tracer_thread_argument.parent_pid = internal_getpid();
-  atomic_store(&tracer_thread_argument.done, 0, memory_order_relaxed);
+  struct TracerThreadArgument *tracer_thread_argument =
+    (struct TracerThreadArgument *)internal_mmap(nullptr, sizeof(struct TracerThreadArgument),        PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
+  new (tracer_thread_argument) TracerThreadArgument();
+
+  tracer_thread_argument->callback = callback;
+  tracer_thread_argument->callback_argument = argument;
+  tracer_thread_argument->parent_pid = internal_getpid();
+  atomic_store(&tracer_thread_argument->done, 0, memory_order_relaxed);
   const uptr kTracerStackSize = 2 * 1024 * 1024;
   ScopedStackSpaceWithGuard tracer_stack(kTracerStackSize);
 
-  tracer_thread_argument.mutex.Lock();
+  tracer_thread_argument->mutex.Lock();
 
   internal_sigfillset(&blocked_sigset);
   for (uptr i = 0; i < ARRAY_SIZE(kSyncSignals); i++)
@@ -301,20 +281,20 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
   uptr tracer_pid = internal_fork();
   if (tracer_pid == 0) {
     VReport(1, "StopTheWorld: In tracer process, calling TracerThread.\n");
-    internal__exit(TracerThread(&tracer_thread_argument));
+    internal__exit(TracerThread(tracer_thread_argument));
   }
   VReport(1, "StopTheWorld: Tracer forked with PID %lu.\n", tracer_pid);
   internal_sigprocmask(SIG_SETMASK, &old_sigset, 0);
   int local_errno = 0;
   if (internal_iserror(tracer_pid, &local_errno)) {
     VReport(1, "StopTheWorld: Fork failed with errno %d\n", local_errno);
-    tracer_thread_argument.mutex.Unlock();
+    tracer_thread_argument->mutex.Unlock();
   } else {
     ScopedSetTracerPID scoped_set_tracer_pid(tracer_pid);
-    tracer_thread_argument.mutex.Unlock();
+    tracer_thread_argument->mutex.Unlock();
     VReport(1, "StopTheWorld: Waiting for tracer to complete\n");
     uptr wait_iterations = 0;
-    while (atomic_load(&tracer_thread_argument.done, memory_order_acquire) == 0) {
+    while (atomic_load(&tracer_thread_argument->done, memory_order_acquire) == 0) {
       wait_iterations++;
       if (wait_iterations % 10000 == 0) {
         VReport(1, "StopTheWorld: Waiting ... (iteration %lu)\n", wait_iterations);
@@ -323,7 +303,7 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
     }
     VReport(1, "StopTheWorld: Waiting for tracer process %lu to exit\n", tracer_pid);
     for (;;) {
-      uptr waitpid_status = internal_waitpid(tracer_pid, nullptr, __WALL);
+      uptr waitpid_status = internal_waitpid(tracer_pid, nullptr, 0);
       if (!internal_iserror(waitpid_status, &local_errno)) {
         VReport(1, "StopTheWorld: Tracer process exited sucessfully\n");
         break;
@@ -337,6 +317,9 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
     }
   }
   VReport(1, "StopTheWorld: Complete.\n");
+
+  tracer_thread_argument->~TracerThreadArgument();
+  internal_munmap(tracer_thread_argument, sizeof(struct TracerThreadArgument));
 }
 
 PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
