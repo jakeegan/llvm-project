@@ -124,22 +124,30 @@ bool ThreadSuspender::SuspendAllThreads() {
 
   VReport(1, "Attached to process %d.\n", pid_);
 
-/*
   struct __pthrdsinfo pinfo;
   char regbuf[256];
   int regbufsize = sizeof(regbuf);
   pthread_t pthread_id = 0;
+  int thread_count = 0;
 
+  VReport(1, "Enumerating threads\n");
   while(pthread_getthrds_np(&pthread_id, PTHRDSINFO_QUERY_ALL, &pinfo, sizeof(pinfo), regbuf,
       &regbufsize) == 0) {
+    thread_count++;
+    VReport(1, "Found thread: tid=%d, state=%d\n", pinfo.__pi_tid, pinfo.__pi_state);
     suspended_threads_list_.Append(pinfo.__pi_tid);
+    regbufsize = sizeof(regbuf);
     if (pthread_id == 0) break;
   }
-  */
 
+  VReport(1, "Thread enumeration complete. Found %d threads.\n", thread_count);
+
+  if (thread_count == 0) {
+    VReport(1, "No threads found, adding main thread %d\n", pid_);
+    suspended_threads_list_.Append(pid_);
+  }
   suspended_threads_list_.Append(pid_);
-  VReport(1, "Added main thread %d to suspended list.\n", pid_);
-
+  VReport(1, "Main thread is %d\n", pid_);
   return true;
 }
 
@@ -165,7 +173,7 @@ static void TracerThreadSignalHandler(int signum, __sanitizer_siginfo *siginfo, 
       inst->ResumeAllThreads();
     RAW_CHECK(RemoveDieCallback(TracerThreadDieCallback));
     thread_suspender_instance = nullptr;
-    atomic_store(&inst->arg->done, 1, memory_order_relaxed);
+    atomic_store(&inst->arg->done, 1, memory_order_release);
   }
   internal__exit((signum == SIGABRT) ? 1 : 2);
 }
@@ -215,16 +223,21 @@ static int TracerThread(void* argument) {
   VReport(1, "TracerThread: About to call SuspendAllThreads\n");
   int exit_code = 0;
   if (!thread_suspender.SuspendAllThreads()) {
+    VReport(1, "TracerThread: SuspendAllThreads failed\n");
     exit_code = 3;
   } else {
+    VReport(1, "TracerThread: SuspendAllThreads succeeded\n");
     tracer_thread_argument->callback(thread_suspender.suspended_threads_list(),
                                       tracer_thread_argument->callback_argument);
+    VReport(1, "TracerThread: Callback complete\n");
     thread_suspender.ResumeAllThreads();
     VReport(1, "TracerThread: Threads resumed.\n");
     exit_code = 0;
   }
+  VReport(1, "TracerThread: Cleaning die callback\n");
   RAW_CHECK(RemoveDieCallback(TracerThreadDieCallback));
   thread_suspender_instance = nullptr;
+  VReport(1, "TracerThread: Setting done flag\n");
   atomic_store(&tracer_thread_argument->done, 1, memory_order_relaxed);
   return exit_code;
 }
@@ -294,21 +307,36 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
   internal_sigprocmask(SIG_SETMASK, &old_sigset, 0);
   int local_errno = 0;
   if (internal_iserror(tracer_pid, &local_errno)) {
+    VReport(1, "StopTheWorld: Fork failed with errno %d\n", local_errno);
     tracer_thread_argument.mutex.Unlock();
   } else {
     ScopedSetTracerPID scoped_set_tracer_pid(tracer_pid);
     tracer_thread_argument.mutex.Unlock();
-    while (atomic_load(&tracer_thread_argument.done, memory_order_relaxed) == 0) 
+    VReport(1, "StopTheWorld: Waiting for tracer to complete\n");
+    uptr wait_iterations = 0;
+    while (atomic_load(&tracer_thread_argument.done, memory_order_acquire) == 0) {
+      wait_iterations++;
+      if (wait_iterations % 10000 == 0) {
+        VReport(1, "StopTheWorld: Waiting ... (iteration %lu)\n", wait_iterations);
+      }
       sched_yield();
+    }
+    VReport(1, "StopTheWorld: Waiting for tracer process %lu to exit\n", tracer_pid);
     for (;;) {
       uptr waitpid_status = internal_waitpid(tracer_pid, nullptr, __WALL);
-      if (!internal_iserror(waitpid_status, &local_errno))
+      if (!internal_iserror(waitpid_status, &local_errno)) {
+        VReport(1, "StopTheWorld: Tracer process exited sucessfully\n");
         break;
-      if (local_errno == EINTR)
+      }
+      if (local_errno == EINTR) {
+        VReport(1, "StopTheWorld: waitpid interrupted\n");
         continue;
+      }
+      VReport(1, "StopTheWorld: waitpid failed with errno %d\n", local_errno);
       break;
     }
   }
+  VReport(1, "StopTheWorld: Complete.\n");
 }
 
 PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
