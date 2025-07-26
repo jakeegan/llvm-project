@@ -43,6 +43,14 @@
 #define PT_READ_GPR 20
 #endif
 
+#if SANITIZER_WORDSIZE == 32
+#define PTRACE_ADDR_CAST(addr) ((int *)(addr))
+#define PTRACE_NULL_ADDR ((int *)nullptr)
+#else
+#define PTRACE_ADDR_CAST(addr) ((long long)(addr))
+#define PTRACE_NULL_ADDR (0LL)
+#endif
+
 #define internal_sigaction_norestorer internal_sigaction
 
 namespace __sanitizer {
@@ -90,8 +98,8 @@ class ThreadSuspender {
 
 void ThreadSuspender::ResumeAllThreads() {
   int pterrno;
-  uptr reg_buffer;
-  if (!internal_iserror(internal_ptrace(PT_DETACH, pid_, (void *)(uptr)1, 0, &reg_buffer), &pterrno)) {
+  int reg_buffer;
+  if (!internal_iserror(internal_ptrace(PT_DETACH, pid_, PTRACE_ADDR_CAST(1), 0, &reg_buffer), &pterrno)) {
     VReport(1, "Detached from process %d.\n", pid_);
   } else {
     VReport(1, "Could not detach from process %d (errno %d).\n", pid_, pterrno);
@@ -99,13 +107,13 @@ void ThreadSuspender::ResumeAllThreads() {
 }
 
 void ThreadSuspender::KillAllThreads() {
-  internal_ptrace(PT_KILL, pid_, nullptr, 0, nullptr);
+  internal_ptrace(PT_KILL, pid_, PTRACE_NULL_ADDR, 0, nullptr);
 }
 
 bool ThreadSuspender::SuspendAllThreads() {
   int pterrno;
-  uptr reg_buffer;
-  if (internal_iserror(internal_ptrace(PT_ATTACH, pid_, nullptr, 0, &reg_buffer), &pterrno)) {
+  int reg_buffer;
+  if (internal_iserror(internal_ptrace(PT_ATTACH, pid_, PTRACE_NULL_ADDR, 0, &reg_buffer), &pterrno)) {
     VReport(1, "Could not attach to process %d (errno %d).\n", pid_, pterrno);
     return false;
   }
@@ -323,8 +331,8 @@ PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
   internal_memset(&aix_regs, 0, sizeof(aix_regs));
 
   uptr stack_pointer;
-  uptr reg_buffer;
-  if (internal_iserror(internal_ptrace(PT_READ_GPR, target_pid, (void*)1, tid, &reg_buffer), &pterrno)) {
+  int reg_buffer;
+  if (internal_iserror(internal_ptrace(PT_READ_GPR, target_pid, PTRACE_ADDR_CAST(1), tid, &reg_buffer), &pterrno)) {
     return pterrno == ESRCH ? REGISTERS_UNAVAILABLE_FATAL : REGISTERS_UNAVAILABLE;
   } else {
     stack_pointer = reg_buffer;

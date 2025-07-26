@@ -43,7 +43,11 @@
 extern char **environ;
 extern char **p_xargv;
 
-//extern "C" int ptrace(int, int32long64_t, int *, int, int *);
+#if SANITIZER_WORDSIZE == 32
+extern "C" int ptrace(int, int, int *, int, int *);
+#else
+extern "C" int ptrace64(int, long long, long long, int, int *);
+#endif
 
 namespace __sanitizer {
 
@@ -54,9 +58,13 @@ static void *GetFuncAddr(const char *name) {
   // all the loaded modules with RTLD_DEFAULT if RTLD_NEXT failed.
   void *addr = dlsym(RTLD_NEXT, name);
 
-  //if (!addr && internal_strcmp(name, "ptrace") == 0) {
-  //  addr = (void *)ptrace;
-  //}
+  if (!addr && internal_strcmp(name, "ptrace") == 0) {
+#if SANITIZER_WORDSIZE == 32
+    addr = (void *)ptrace;
+#else
+    addr = (void *)ptrace64;
+#endif
+  }
   return addr;
 }
 
@@ -258,10 +266,10 @@ uptr internal_waitpid(int pid, int *status, int options) {
 }
 
 #if SANITIZER_WORDSIZE == 32
-uptr internal_ptrace(int request, int pid, int *addr, int data, int* buff) {
+int internal_ptrace(int request, int pid, int *addr, int data, int* buff) {
   DEFINE__REAL(int, ptrace, int request, int pid, int *addr, int data, int* buff);
 #else
-uptr internal_ptrace(int request, long long pid, long long addr, int data, int* buff) {
+int internal_ptrace(int request, long long pid, long long addr, int data, int* buff) {
   DEFINE__REAL(int, ptrace, int request, long long pid, long long addr, int data, int* buff);
 #endif
   return _REAL(ptrace, request, pid, addr, data, buff);
