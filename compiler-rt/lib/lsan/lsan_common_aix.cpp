@@ -44,11 +44,44 @@ void ProcessPlatformSpecificAllocations(Frontier *frontier) {}
 
 void HandleLeaks() {}
 
+static const uptr kMaxSharedLeaks = 1024;
+
+struct AIXSharedLeakData {
+  StopTheWorldCallback original_callback;
+  ThreadID caller_tid;
+  uptr caller_sp;
+  bool success;
+  uptr frontier_count;
+  uptr leaks_count;
+  LeakedChunk leaks[kMaxSharedLeaks];
+};
+
+static void AIXSharedCallback(const SuspendedThreadsList &suspended_threads, void *arg) {
+  AIXSharedLeakData *shared = (AIXSharedLeakData *)arg;
+
+  CheckForLeaksParam temp_param;
+  temp_param.caller_tid = shared->caller_tid;
+  temp_param.caller_sp = shared->caller_sp;
+  temp_param.success = false;
+
+  shared->original_callback(suspended_threads, &temp_param);
+  shared->success = temp_param.success;
+  shared->frontier_count = temp_param.frontier.size();
+  shared->leaks_count = temp_param.leaks.size();
+
+  uptr copy_count = Min(shared->leaks_count, kMaxSharedLeaks);
+  for (uptr i = 0; i < copy_count; ++i) {
+    shared->leaks[i] = temp_param.leaks[i];
+  }
+
+  shared->leaks_count = copy_count;
+}
+
 void LockStuffAndStopTheWorld(StopTheWorldCallback callback,
                               CheckForLeaksParam *argument) {
   ScopedStopTheWorldLock lock;
-  StopTheWorld(callback, argument);
-  return;
+  //StopTheWorld(callback, argument);
+  //return;
 
   //CheckForLeaksParam *shared_argument = (CheckForLeaksParam *)internal_mmap(nullptr,
   //sizeof(CheckForLeaksParam), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
@@ -60,6 +93,23 @@ void LockStuffAndStopTheWorld(StopTheWorldCallback callback,
   //argument->success = shared_argument->success;
   //internal_munmap(shared_argument, sizeof(CheckForLeaksParam));
 
+  AIXSharedLeakData *shared_data = (AIXSharedLeakData *)internal_mmap(nullptr,
+    sizeof(AIXSharedLeakData), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
+
+  shared_data->original_callback = callback;
+  shared_data->caller_tid = argument->caller_tid;
+  shared_data->caller_sp = argument->caller_sp;
+  shared_data->success = false;
+  shared_data->frontier_count = 0;
+  shared_data->leaks_count = 0;
+
+  StopTheWorld(AIXSharedCallback, shared_data);
+  argument->success = shared_data->success;
+  argument->leaks.clear();
+  for (uptr i = 0; i < shared_data->leaks_count; ++i) {
+    argument->leaks.push_back(shared_data->leaks[i]);
+  }
+  internal_munmap(shared_data, sizeof(AIXSharedLeakData));
 }
 
 LoadedModule *GetLinker() { return nullptr; }
