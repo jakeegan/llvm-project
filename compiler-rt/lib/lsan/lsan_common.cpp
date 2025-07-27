@@ -816,10 +816,13 @@ static bool ReportUnsuspendedThreads(
 
 static void CheckForLeaksCallback(const SuspendedThreadsList &suspended_threads,
                                   void *arg) {
+  VReport(1, "CheckForLeaksCallback: start\n");
   CheckForLeaksParam *param = reinterpret_cast<CheckForLeaksParam *>(arg);
   CHECK(param);
   CHECK(!param->success);
+  VReport(1, "CheckForLeaksCallback: step1\n");
   if (!ReportUnsuspendedThreads(suspended_threads)) {
+    VReport(1, "CheckForLeaksCallback: ReportUnususpendedThreads failed\n");
     switch (flags()->thread_suspend_fail) {
       case 0:
         param->success = true;
@@ -831,6 +834,7 @@ static void CheckForLeaksCallback(const SuspendedThreadsList &suspended_threads,
         return;
     }
   }
+  VReport(1, "CheckForLeaksCallback: step2\n");
   ClassifyAllChunks(suspended_threads, &param->frontier, param->caller_tid,
                     param->caller_sp);
   ForEachChunk(CollectLeaksCb, &param->leaks);
@@ -838,6 +842,7 @@ static void CheckForLeaksCallback(const SuspendedThreadsList &suspended_threads,
   // kIgnored tags.
   ForEachChunk(ResetTagsCb, nullptr);
   param->success = true;
+  VReport(1, "CheckForLeaksCallback: step3\n");
 }
 
 static bool PrintResults(LeakReport &report) {

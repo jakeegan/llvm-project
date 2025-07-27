@@ -16,8 +16,12 @@
 
 #if CAN_SANITIZE_LEAKS && SANITIZER_AIX
 
+#include <sys/mman.h>
+
 #include "lsan_allocator.h"
 #include "sanitizer_common/sanitizer_flags.h"
+#include "sanitizer_common/sanitizer_posix.h"
+#include "sanitizer_common/sanitizer_placement_new.h"
 #include "sanitizer_common/sanitizer_thread_registry.h"
 
 namespace __lsan {
@@ -47,11 +51,20 @@ void LockStuffAndStopTheWorld(StopTheWorldCallback callback,
   bool original_success = argument->success;
   VReport(1, "LockStuffAndStopTheWorld: original_success = %s\n", original_success ? "true" :
   "false");
-
-  StopTheWorld(callback, argument);
+  
+  CheckForLeaksParam *shared_argument = (CheckForLeaksParam *)internal_mmap(nullptr,
+  sizeof(CheckForLeaksParam), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
+  new (shared_argument) CheckForLeaksParam();
+  shared_argument->caller_tid = argument->caller_tid;
+  shared_argument->caller_sp = argument->caller_sp;
+  shared_argument->success = argument->success;
+  StopTheWorld(callback, shared_argument);
 
   VReport(1, "LockStuffAndStopTheWorld: after_success = %s\n", argument->success ? "true" :
   "false");
+
+  argument->success = shared_argument->success;
+  internal_munmap(shared_argument, sizeof(CheckForLeaksParam));
 
   if (!argument->success && !original_success){
     VReport(1, "LeakSanitizer: StopTheWorld failed\n");
