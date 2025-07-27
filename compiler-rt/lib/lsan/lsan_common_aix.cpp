@@ -45,6 +45,7 @@ void ProcessPlatformSpecificAllocations(Frontier *frontier) {}
 void HandleLeaks() {}
 
 static const uptr kMaxSharedLeaks = 1024;
+static const uptr kMaxSharedFrontier = 4096;
 
 struct AIXSharedLeakData {
   StopTheWorldCallback original_callback;
@@ -54,6 +55,7 @@ struct AIXSharedLeakData {
   uptr frontier_count;
   uptr leaks_count;
   LeakedChunk leaks[kMaxSharedLeaks];
+  uptr frontier[kMaxSharedFrontier];
 };
 
 static void AIXSharedCallback(const SuspendedThreadsList &suspended_threads, void *arg) {
@@ -69,12 +71,17 @@ static void AIXSharedCallback(const SuspendedThreadsList &suspended_threads, voi
   shared->frontier_count = temp_param.frontier.size();
   shared->leaks_count = temp_param.leaks.size();
 
-  uptr copy_count = Min(shared->leaks_count, kMaxSharedLeaks);
-  for (uptr i = 0; i < copy_count; ++i) {
+  uptr leaks_copy_count = Min(shared->leaks_count, kMaxSharedLeaks);
+  for (uptr i = 0; i < leaks_copy_count; ++i) {
     shared->leaks[i] = temp_param.leaks[i];
   }
+  shared->leaks_count = leaks_copy_count;
 
-  shared->leaks_count = copy_count;
+  uptr frontier_copy_count = Min(shared->frontier_count, kMaxSharedFrontier);
+  for (uptr i = 0; i < frontier_copy_count; ++i) {
+    shared->frontier[i] = temp_param.frontier[i];
+  }
+  shared->frontier_count = frontier_copy_count;
 }
 
 void LockStuffAndStopTheWorld(StopTheWorldCallback callback,
@@ -108,6 +115,10 @@ void LockStuffAndStopTheWorld(StopTheWorldCallback callback,
   argument->leaks.clear();
   for (uptr i = 0; i < shared_data->leaks_count; ++i) {
     argument->leaks.push_back(shared_data->leaks[i]);
+  }
+  argument->frontier.clear();
+  for (uptr i = 0; i < shared_data->frontier_count; ++i) {
+    argument->frontier.push_back(shared_data->frontier[i]);
   }
   internal_munmap(shared_data, sizeof(AIXSharedLeakData));
 }
