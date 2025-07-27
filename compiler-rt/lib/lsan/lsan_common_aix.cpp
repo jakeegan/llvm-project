@@ -45,8 +45,13 @@ void LockStuffAndStopTheWorld(StopTheWorldCallback callback,
   ScopedStopTheWorldLock lock;
 
   bool original_success = argument->success;
+  VReport(1, "LockStuffAndStopTheWorld: original_success = %s\n", original_success ? "true" :
+  "false");
 
   StopTheWorld(callback, argument);
+
+  VReport(1, "LockStuffAndStopTheWorld: after_success = %s\n", argument->success ? "true" :
+  "false");
 
   if (!argument->success && !original_success){
     VReport(1, "LeakSanitizer: StopTheWorld failed\n");

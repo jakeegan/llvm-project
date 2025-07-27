@@ -25,6 +25,7 @@
 #include <pthread.h>
 #include <sys/pthdebug.h>
 #include <sys/procfs.h>
+#include <sys/reg.h>
 
 #include "sanitizer_stoptheworld.h"
 #include "sanitizer_atomic.h"
@@ -39,13 +40,8 @@
 
 #include <procinfo.h>
 
-#ifndef __WALL
-#define __WALL 0x40000000
-#endif
-
-#ifndef PT_READ_GPR
-#define PT_READ_GPR 20
-#endif
+#define GPR_STACK_POINTER 1
+#define NUM_GPRS 32
 
 #if SANITIZER_WORDSIZE == 32
 #define PTRACE_ADDR_CAST(addr) ((int *)(addr))
@@ -54,6 +50,8 @@
   getthrds(pid, buf, sizeof(thrdsinfo), index, count)
 #define THRDS_STRUCT struct thrdsinfo
 #define TID_TYPE tid_t
+#define GPRS_BUFFER_SIZE 128
+#define GPR_TYPE u32
 #else
 #define PTRACE_ADDR_CAST(addr) ((long long)(addr))
 #define PTRACE_NULL_ADDR (0LL)
@@ -61,6 +59,8 @@
   getthrds64(pid, buf, sizeof(struct thrdentry64), index, count)
 #define THRDS_STRUCT struct thrdentry64
 #define TID_TYPE tid64_t
+#define GPRS_BUFFER_SIZE 256
+#define GPR_TYPE u64
 #endif
 
 #define internal_sigaction_norestorer internal_sigaction
@@ -123,6 +123,7 @@ bool ThreadSuspender::EnumerateThreads() {
     suspended_threads_list_.Append(tid);
   }
 
+  VReport(1, "EnumerateThreads: thread count = %d\n", suspended_threads_list_.ThreadCount());
   return suspended_threads_list_.ThreadCount() > 0;
 }
 
@@ -253,6 +254,9 @@ static int TracerThread(void* argument) {
     exit_code = 3;
   } else {
     VReport(1, "TracerThread: SuspendAllThreads succeeded\n");
+    const SuspendedThreadsList &suspended_list = thread_suspender.suspended_threads_list();
+    VReport(1, "TracerThread: passing %lu suspended threads to callback\n",
+    suspended_list.ThreadCount());
     tracer_thread_argument->callback(thread_suspender.suspended_threads_list(),
                                       tracer_thread_argument->callback_argument);
     VReport(1, "TracerThread: Callback complete\n");
@@ -373,7 +377,28 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
 
 PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
     uptr index, InternalMmapVector<uptr> *buffer, uptr *sp) const {
-  return REGISTERS_UNAVAILABLE;
+  CHECK_LT(index, thread_ids_.size());
+  ThreadID tid = thread_ids_[index];
+
+  buffer->resize(NUM_GPRS);
+  int pterrno;
+
+  char gprs_raw_buffer[GPRS_BUFFER_SIZE];
+
+  if (internal_iserror(internal_ptrace(PTT_READ_GPRS, tid, PTRACE_ADDR_CAST(gprs_raw_buffer), 0,
+    nullptr), &pterrno)) {
+    VReport(1, "Failed to read GPRs for thread %lu (errno %d)\n", tid, pterrno);
+    return REGISTERS_UNAVAILABLE;
+  }
+
+  GPR_TYPE *gprs = (GPR_TYPE*)gprs_raw_buffer;
+  for (int reg = 0; reg < NUM_GPRS; reg++) {
+    (*buffer)[reg] = (uptr)gprs[reg];
+  }
+  *sp = (*buffer)[GPR_STACK_POINTER];
+
+  VReport(1, "GetRegitersAndSP: Done for thread %lu\n", tid);
+  return REGISTERS_AVAILABLE;
 }
  
 
@@ -387,10 +412,14 @@ uptr SuspendedThreadsListAIX::ThreadCount() const {
 }
 
 bool SuspendedThreadsListAIX::ContainsTid(ThreadID thread_id) const {
+  VReport(1, "ContainsTid: called for thread %lu\n", thread_id);
   for (uptr i = 0; i < thread_ids_.size(); i++) {
-    if (thread_ids_[i] == thread_id)
+    if (thread_ids_[i] == thread_id) {
+      VReport(1, "ContainsTid: found thread %lu at index %lu\n", thread_id, i);
       return true;
+    }
   }
+  VReport(1, "ContainsTid: Thread %lu not found\n", thread_id);
   return false;
 }
 
