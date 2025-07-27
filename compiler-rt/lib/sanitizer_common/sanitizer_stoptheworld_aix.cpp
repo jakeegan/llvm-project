@@ -377,10 +377,10 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
 
 PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
     uptr index, InternalMmapVector<uptr> *buffer, uptr *sp) const {
+  //return REGISTERS_UNAVAILABLE;
   CHECK_LT(index, thread_ids_.size());
   ThreadID tid = thread_ids_[index];
 
-  buffer->resize(NUM_GPRS);
   int pterrno;
 
   char gprs_raw_buffer[GPRS_BUFFER_SIZE];
@@ -388,16 +388,20 @@ PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
   if (internal_iserror(internal_ptrace(PTT_READ_GPRS, tid, PTRACE_ADDR_CAST(gprs_raw_buffer), 0,
     nullptr), &pterrno)) {
     VReport(1, "Failed to read GPRs for thread %lu (errno %d)\n", tid, pterrno);
-    return REGISTERS_UNAVAILABLE;
+    return pterrno == ESRCH ? REGISTERS_UNAVAILABLE_FATAL : REGISTERS_UNAVAILABLE;
   }
 
   GPR_TYPE *gprs = (GPR_TYPE*)gprs_raw_buffer;
-  for (int reg = 0; reg < NUM_GPRS; reg++) {
-    (*buffer)[reg] = (uptr)gprs[reg];
-  }
-  *sp = (*buffer)[GPR_STACK_POINTER];
+  *sp = (uptr)gprs[GPR_STACK_POINTER];
 
-  VReport(1, "GetRegitersAndSP: Done for thread %lu\n", tid);
+  buffer->resize(RoundUpTo(GPRS_BUFFER_SIZE, sizeof(uptr)) / sizeof(uptr));
+  internal_memcpy(buffer->data(), gprs_raw_buffer, GPRS_BUFFER_SIZE);
+  if (*sp == 0) {VReport(1, "GetRegistersAndSP: Warning null stack pointer)");}
+#if SANITIZER_WORDSIZE == 64
+  if (*sp >= 288) {
+    *sp -= 288;
+  }
+#endif
   return REGISTERS_AVAILABLE;
 }
  

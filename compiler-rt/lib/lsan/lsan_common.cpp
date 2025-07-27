@@ -472,6 +472,12 @@ static void ProcessThread(ThreadID os_id, uptr sp,
     uptr registers_begin = reinterpret_cast<uptr>(registers.data());
     uptr registers_end =
         reinterpret_cast<uptr>(registers.data() + registers.size());
+
+    VReport(1, "AIX register: begin=0x%lx, end=0x%lx, size=%lu, bytes\n", registers_begin,
+    registers_end, registers_end - registers_begin);
+    uptr *reg_data = (uptr*)registers_begin;
+    VReport(1, "register values: 0x%lx 0x%lx 0x%lx\n", reg_data[0], reg_data[1], reg_data[2]);
+
     ScanForPointers(registers_begin, registers_end, frontier, "REGISTERS",
                     kReachable, accessor);
   }
