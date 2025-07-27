@@ -129,45 +129,52 @@ bool ThreadSuspender::EnumerateThreads() {
 void ThreadSuspender::ResumeAllThreads() {
   int pterrno;
   int reg_buffer;
-
-  for (uptr i = 0; i < suspended_threads_list_.ThreadCount(); i++) {
-    ThreadID tid = suspended_threads_list_.GetThreadID(i);
-    if (!internal_iserror(internal_ptrace(PT_DETACH, pid_, PTRACE_ADDR_CAST(1), tid, &reg_buffer),
+    if (!internal_iserror(internal_ptrace(PT_DETACH, pid_, PTRACE_ADDR_CAST(1), 0, &reg_buffer),
                                           &pterrno)) {
-      VReport(1, "Detached from thread");
+      VReport(1, "ResumeAllThreads: Detached from process %d\n", pid_);
     } else {
-      VReport(1, "Could not detatch from thread");
+      VReport(1, "ResumeAllThreads: Could not detatch from process %d (errno %d)\n", pid_, pterrno);
     }
-  }
 }
 
 void ThreadSuspender::KillAllThreads() {
-  internal_ptrace(PT_KILL, pid_, PTRACE_NULL_ADDR, 0, nullptr);
+  for (uptr i = 0; i < suspended_threads_list_.ThreadCount(); i++) {
+    ThreadID tid = suspended_threads_list_.GetThreadID(i);
+    internal_ptrace(PT_KILL, tid, PTRACE_NULL_ADDR, 0, nullptr);
+  }
 }
 
 bool ThreadSuspender::SuspendAllThreads() {
+  int pterrno;
+  int reg_buffer;
+  if (internal_iserror(internal_ptrace(PT_ATTACH, pid_, PTRACE_NULL_ADDR, 0, &reg_buffer),
+      &pterrno)) {
+    VReport(1, "SuspendAllThreads:Could not attach to process %d (errno %d)\n", pid_, pterrno);
+    return false;
+  }
+  VReport(1, "SuspendAllThreads: Attached to process %d\n", pid_);
 
-  if (!EnumerateThreads()) {
-    VReport(1, "Failed to enumerate threads.\n");
+  int status;
+  uptr waitpid_status;
+  HANDLE_EINTR(waitpid_status, internal_waitpid(pid_, &status, 0));
+
+  if (internal_iserror(waitpid_status, &pterrno)) {
+    VReport(1, "SuspendAllThreads: waitpid failed process %d (errno %d)\n", pid_, pterrno);
+    internal_ptrace(PT_DETACH, pid_, PTRACE_ADDR_CAST(1), 0, &reg_buffer);
     return false;
   }
 
-  int pterrno;
-  int reg_buffer;
-  bool all_attached = true;
-
-  for (uptr i = 0; i < suspended_threads_list_.ThreadCount(); i++) {
-    ThreadID tid = suspended_threads_list_.GetThreadID(i);
-    if (internal_iserror(internal_ptrace(PT_ATTACH, pid_, PTRACE_NULL_ADDR, tid, &reg_buffer),
-      &pterrno)) {
-      all_attached = false;
-      continue;
-    }
-    int status;
-    uptr waitpid_status;
-    HANDLE_EINTR(waitpid_status, internal_waitpid(pid_, &status, 0));
+  if (!WIFSTOPPED(status)) {
+    VReport(1, "SuspendAllThreads: Process %d did not stop after attach (status %d)\n", pid_, status);
+    internal_ptrace(PT_DETACH, pid_, PTRACE_ADDR_CAST(1), 0, &reg_buffer);
+    return false;
   }
-  return all_attached;
+
+  if (!EnumerateThreads()) {
+    return false;
+  }
+  VReport(1, "SuspendAllThreads: Success\n");
+  return true;
 }
 
 static ThreadSuspender *thread_suspender_instance = nullptr;
