@@ -105,38 +105,26 @@ class ThreadSuspender {
   TracerThreadArgument *arg;
 
   private:
-    bool EnumerateThreads();
+    void EnumerateThreads();
     SuspendedThreadsListAIX suspended_threads_list_;
     pid_t pid_;
 };
 
-bool ThreadSuspender::EnumerateThreads() {
-  const int kMaxThreads = 1024;
-  THRDS_STRUCT thread_info[kMaxThreads];
+void ThreadSuspender::EnumerateThreads() {
+  const int kMaxThreadsPerCall = 256;
+  THRDS_STRUCT thread_info[kMaxThreadsPerCall];
   TID_TYPE index = 0;
   int count;
 
-  // Should update this to be called in a loop instead
-  count = GETTHRDS_CALL(pid_, thread_info, &index, kMaxThreads);
 
-  bool all_threads_stopped = true;
-  for (int i = 0; i < count; i++) {
-    TID_TYPE tid = thread_info[i].ti_tid;
-    suspended_threads_list_.Append(tid);
-
-    if (thread_info[i].ti_state == 1 || thread_info[i].ti_state == 2 ) {
-      VReport(1, "EnumerateThreads: Thread %lu not stopped\n", tid);
-    } else {
+  while ((count = GETTHRDS_CALL(pid_, thread_info, &index, kMaxThreadsPerCall)) > 0) {
+    for (int i = 0; i < count; i++) {
+      TID_TYPE tid = thread_info[i].ti_tid;
+      suspended_threads_list_.Append(tid);
       VReport(1, "EnumerateThreads: Thread %lu is in state %d\n", tid, thread_info[i].ti_state);
     }
+    if (count < kMaxThreadsPerCall) break;
   }
-
-  if (!all_threads_stopped) {
-    VReport(1, "EnumerateThreads: Not all threads suspended\n");
-  }
-
-  VReport(1, "EnumerateThreads: thread count = %d\n", suspended_threads_list_.ThreadCount());
-  return suspended_threads_list_.ThreadCount() > 0;
 }
 
 void ThreadSuspender::ResumeAllThreads() {
@@ -183,9 +171,8 @@ bool ThreadSuspender::SuspendAllThreads() {
     return false;
   }
 
-  if (!EnumerateThreads()) {
-    return false;
-  }
+  EnumerateThreads();
+
   VReport(1, "SuspendAllThreads: Success\n");
   return true;
 }
@@ -413,17 +400,6 @@ typedef struct {
     regs->gpr[i] = gprs[i];
   }
   *sp = (uptr)regs->gpr[GPR1];
-
-  //VReport(1, "First 4 GPRS for thread %lu: 0x%lx 0x%lx 0x%lx 0x%lx\n", tid, (uptr)gprs[0],
-  //(uptr)gprs[1], (uptr)gprs[2], (uptr)gprs[3]);
-
-  //buffer->resize(RoundUpTo(sizeof(regs), sizeof(uptr)) / sizeof(uptr));
-  //internal_memcpy(buffer->data(), &regs, sizeof(regs));
-
-  //VReport(1, "AIX register buffer: size=%lu elements, bytes=%lu, buffer_addr=%p\n", buffer->size(),
-  //sizeof(regs), buffer->data());
-  //VReport(1, "AIX register struct size: %lu bytes, NUM_GPRS=%d, GPR_TYPE size=%lu\n", sizeof(regs),
-  //NUM_GPRS, sizeof(GPR_TYPE));
 
   return REGISTERS_AVAILABLE;
 }
