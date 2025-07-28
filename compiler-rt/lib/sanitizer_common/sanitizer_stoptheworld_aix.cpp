@@ -22,8 +22,6 @@
 #include <sched.h>
 #include <signal.h>
 #include <stddef.h>
-#include <pthread.h>
-#include <sys/pthdebug.h>
 #include <sys/procfs.h>
 #include <sys/reg.h>
 
@@ -39,8 +37,6 @@
 #include "sanitizer_mutex.h"
 
 #include <procinfo.h>
-
-#define NUM_GPRS 32
 
 #if SANITIZER_WORDSIZE == 32
 #define PTRACE_ADDR_CAST(addr) ((int *)(addr))
@@ -101,7 +97,6 @@ class ThreadSuspender {
   TracerThreadArgument *arg;
 
   private:
-    void EnumerateThreads();
     SuspendedThreadsListAIX suspended_threads_list_;
     pid_t pid_;
 };
