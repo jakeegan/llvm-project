@@ -393,7 +393,6 @@ PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
   int pterrno;
 
   char gprs_raw_buffer[GPRS_BUFFER_SIZE];
-  internal_memset(gprs_raw_buffer, 0, GPRS_BUFFER_SIZE);
 
   if (internal_iserror(internal_ptrace(PTT_READ_GPRS, tid, PTRACE_ADDR_CAST(gprs_raw_buffer), 0,
     nullptr), &pterrno)) {
@@ -404,9 +403,11 @@ PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
   GPR_TYPE *gprs = (GPR_TYPE*)gprs_raw_buffer;
   *sp = (uptr)gprs[GPR1];
 
+  VReport(1, "First 4 GPRS for thread %lu: 0x%lx 0x%lx 0x%lx 0x%lx\n", tid, (uptr)gprs[0],
+  (uptr)gprs[1], (uptr)gprs[2], (uptr)gprs[3]);
+
   buffer->resize(RoundUpTo(GPRS_BUFFER_SIZE, sizeof(uptr)) / sizeof(uptr));
   internal_memcpy(buffer->data(), gprs_raw_buffer, GPRS_BUFFER_SIZE);
-  if (*sp == 0) {VReport(1, "GetRegistersAndSP: Warning null stack pointer)");}
   return REGISTERS_AVAILABLE;
 }
  
