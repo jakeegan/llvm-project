@@ -45,6 +45,7 @@
 #if SANITIZER_WORDSIZE == 32
 #define PTRACE_ADDR_CAST(addr) ((int *)(addr))
 #define PTRACE_NULL_ADDR ((int *)nullptr)
+#define PTRACE_PID_CAST(pid) ((int)(pid))
 #define GETTHRDS_CALL(pid, buf, index, count) \
   getthrds(pid, buf, sizeof(thrdsinfo), index, count)
 #define THRDS_STRUCT struct thrdsinfo
@@ -54,6 +55,7 @@
 #else
 #define PTRACE_ADDR_CAST(addr) ((long long)(addr))
 #define PTRACE_NULL_ADDR (0LL)
+#define PTRACE_PID_CAST(pid) ((long long)(pid))
 #define GETTHRDS_CALL(pid, buf, index, count) \
   getthrds64(pid, buf, sizeof(struct thrdentry64), index, count)
 #define THRDS_STRUCT struct thrdentry64
@@ -140,7 +142,7 @@ bool ThreadSuspender::EnumerateThreads() {
 void ThreadSuspender::ResumeAllThreads() {
   int pterrno;
   int reg_buffer;
-    if (!internal_iserror(internal_ptrace(PT_DETACH, pid_, PTRACE_ADDR_CAST(1), 0, &reg_buffer),
+    if (!internal_iserror(internal_ptrace(PT_DETACH, PTRACE_PID_CAST(pid_), PTRACE_ADDR_CAST(1), 0, &reg_buffer),
                                           &pterrno)) {
       VReport(1, "ResumeAllThreads: Detached from process %d\n", pid_);
     } else {
@@ -151,14 +153,14 @@ void ThreadSuspender::ResumeAllThreads() {
 void ThreadSuspender::KillAllThreads() {
   for (uptr i = 0; i < suspended_threads_list_.ThreadCount(); i++) {
     ThreadID tid = suspended_threads_list_.GetThreadID(i);
-    internal_ptrace(PT_KILL, tid, PTRACE_NULL_ADDR, 0, nullptr);
+    internal_ptrace(PT_KILL, PTRACE_PID_CAST(tid), PTRACE_NULL_ADDR, 0, nullptr);
   }
 }
 
 bool ThreadSuspender::SuspendAllThreads() {
   int pterrno;
   int reg_buffer;
-  if (internal_iserror(internal_ptrace(PT_ATTACH, pid_, PTRACE_NULL_ADDR, 0, &reg_buffer),
+  if (internal_iserror(internal_ptrace(PT_ATTACH, PTRACE_PID_CAST(pid_), PTRACE_NULL_ADDR, 0, &reg_buffer),
       &pterrno)) {
     VReport(1, "SuspendAllThreads:Could not attach to process %d (errno %d)\n", pid_, pterrno);
     return false;
@@ -171,13 +173,13 @@ bool ThreadSuspender::SuspendAllThreads() {
 
   if (internal_iserror(waitpid_status, &pterrno)) {
     VReport(1, "SuspendAllThreads: waitpid failed process %d (errno %d)\n", pid_, pterrno);
-    internal_ptrace(PT_DETACH, pid_, PTRACE_ADDR_CAST(1), 0, &reg_buffer);
+    internal_ptrace(PT_DETACH, PTRACE_PID_CAST(pid_), PTRACE_ADDR_CAST(1), 0, &reg_buffer);
     return false;
   }
 
   if (!WIFSTOPPED(status)) {
     VReport(1, "SuspendAllThreads: Process %d did not stop after attach (status %d)\n", pid_, status);
-    internal_ptrace(PT_DETACH, pid_, PTRACE_ADDR_CAST(1), 0, &reg_buffer);
+    internal_ptrace(PT_DETACH, PTRACE_PID_CAST(pid_), PTRACE_ADDR_CAST(1), 0, &reg_buffer);
     return false;
   }
 
@@ -394,7 +396,7 @@ PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
 
   char gprs_raw_buffer[GPRS_BUFFER_SIZE];
 
-  if (internal_iserror(internal_ptrace(PTT_READ_GPRS, tid, PTRACE_ADDR_CAST(gprs_raw_buffer), 0,
+  if (internal_iserror(internal_ptrace(PTT_READ_GPRS, PTRACE_PID_CAST(tid), PTRACE_ADDR_CAST(gprs_raw_buffer), 0,
     nullptr), &pterrno)) {
     VReport(1, "Failed to read GPRs for thread %lu (errno %d)\n", tid, pterrno);
     return pterrno == ESRCH ? REGISTERS_UNAVAILABLE_FATAL : REGISTERS_UNAVAILABLE;

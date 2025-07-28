@@ -268,12 +268,14 @@ uptr internal_waitpid(int pid, int *status, int options) {
 #if SANITIZER_WORDSIZE == 32
 int internal_ptrace(int request, int pid, int *addr, int data, int* buff) {
   DEFINE__REAL(int, ptrace, int request, int pid, int *addr, int data, int* buff);
+  return _REAL(ptrace, request, pid, addr, data, buff);
+}
 #else
 int internal_ptrace(int request, long long pid, long long addr, int data, int* buff) {
   DEFINE__REAL(int, ptrace, int request, long long pid, long long addr, int data, int* buff);
-#endif
   return _REAL(ptrace, request, pid, addr, data, buff);
 }
+#endif
 
 uptr internal_sigaltstack(const void *ss, void *oss) {
   DEFINE__REAL(uptr, sigaltstack, const void *ss, void *oss);
