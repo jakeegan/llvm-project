@@ -40,7 +40,6 @@
 
 #include <procinfo.h>
 
-#define GPR_STACK_POINTER 1
 #define NUM_GPRS 32
 
 #if SANITIZER_WORDSIZE == 32
@@ -115,12 +114,23 @@ bool ThreadSuspender::EnumerateThreads() {
   TID_TYPE index = 0;
   int count;
 
+  // Should update this to be called in a loop instead
   count = GETTHRDS_CALL(pid_, thread_info, &index, kMaxThreads);
-  if (count == -1) {return false;}
 
+  bool all_threads_stopped = true;
   for (int i = 0; i < count; i++) {
     TID_TYPE tid = thread_info[i].ti_tid;
     suspended_threads_list_.Append(tid);
+
+    if (thread_info[i].ti_state == 1 || thread_info[i].ti_state == 2 ) {
+      VReport(1, "EnumerateThreads: Thread %lu not stopped\n", tid);
+    } else {
+      VReport(1, "EnumerateThreads: Thread %lu is in state %d\n", tid, thread_info[i].ti_state);
+    }
+  }
+
+  if (!all_threads_stopped) {
+    VReport(1, "EnumerateThreads: Not all threads suspended\n");
   }
 
   VReport(1, "EnumerateThreads: thread count = %d\n", suspended_threads_list_.ThreadCount());
@@ -377,13 +387,13 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
 
 PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
     uptr index, InternalMmapVector<uptr> *buffer, uptr *sp) const {
-  //return REGISTERS_UNAVAILABLE;
   CHECK_LT(index, thread_ids_.size());
   ThreadID tid = thread_ids_[index];
 
   int pterrno;
 
   char gprs_raw_buffer[GPRS_BUFFER_SIZE];
+  internal_memset(gprs_raw_buffer, 0, GPRS_BUFFER_SIZE);
 
   if (internal_iserror(internal_ptrace(PTT_READ_GPRS, tid, PTRACE_ADDR_CAST(gprs_raw_buffer), 0,
     nullptr), &pterrno)) {
@@ -392,16 +402,11 @@ PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
   }
 
   GPR_TYPE *gprs = (GPR_TYPE*)gprs_raw_buffer;
-  *sp = (uptr)gprs[GPR_STACK_POINTER];
+  *sp = (uptr)gprs[GPR1];
 
   buffer->resize(RoundUpTo(GPRS_BUFFER_SIZE, sizeof(uptr)) / sizeof(uptr));
   internal_memcpy(buffer->data(), gprs_raw_buffer, GPRS_BUFFER_SIZE);
   if (*sp == 0) {VReport(1, "GetRegistersAndSP: Warning null stack pointer)");}
-#if SANITIZER_WORDSIZE == 64
-  if (*sp >= 288) {
-    *sp -= 288;
-  }
-#endif
   return REGISTERS_AVAILABLE;
 }
  
