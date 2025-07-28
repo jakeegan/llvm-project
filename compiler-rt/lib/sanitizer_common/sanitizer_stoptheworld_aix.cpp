@@ -402,14 +402,29 @@ PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
     return pterrno == ESRCH ? REGISTERS_UNAVAILABLE_FATAL : REGISTERS_UNAVAILABLE;
   }
 
+typedef struct {
+  GPR_TYPE gpr[NUM_GPRS];
+} aix_regs_struct;
+
   GPR_TYPE *gprs = (GPR_TYPE*)gprs_raw_buffer;
-  *sp = (uptr)gprs[GPR1];
+  buffer->resize(RoundUpTo(sizeof(aix_regs_struct), sizeof(uptr)) / sizeof(uptr));
+  aix_regs_struct *regs = reinterpret_cast<aix_regs_struct *>(buffer->data());
+  for (int i = 0; i < NUM_GPRS; i++) {
+    regs->gpr[i] = gprs[i];
+  }
+  *sp = (uptr)regs->gpr[GPR1];
 
-  VReport(1, "First 4 GPRS for thread %lu: 0x%lx 0x%lx 0x%lx 0x%lx\n", tid, (uptr)gprs[0],
-  (uptr)gprs[1], (uptr)gprs[2], (uptr)gprs[3]);
+  //VReport(1, "First 4 GPRS for thread %lu: 0x%lx 0x%lx 0x%lx 0x%lx\n", tid, (uptr)gprs[0],
+  //(uptr)gprs[1], (uptr)gprs[2], (uptr)gprs[3]);
 
-  buffer->resize(RoundUpTo(GPRS_BUFFER_SIZE, sizeof(uptr)) / sizeof(uptr));
-  internal_memcpy(buffer->data(), gprs_raw_buffer, GPRS_BUFFER_SIZE);
+  //buffer->resize(RoundUpTo(sizeof(regs), sizeof(uptr)) / sizeof(uptr));
+  //internal_memcpy(buffer->data(), &regs, sizeof(regs));
+
+  //VReport(1, "AIX register buffer: size=%lu elements, bytes=%lu, buffer_addr=%p\n", buffer->size(),
+  //sizeof(regs), buffer->data());
+  //VReport(1, "AIX register struct size: %lu bytes, NUM_GPRS=%d, GPR_TYPE size=%lu\n", sizeof(regs),
+  //NUM_GPRS, sizeof(GPR_TYPE));
+
   return REGISTERS_AVAILABLE;
 }
  

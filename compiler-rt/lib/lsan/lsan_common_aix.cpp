@@ -71,6 +71,13 @@ static void AIXSharedCallback(const SuspendedThreadsList &suspended_threads, voi
   shared->frontier_count = temp_param.frontier.size();
   shared->leaks_count = temp_param.leaks.size();
 
+  VReport(1, "CHILD: callback returned succesfully=%d, found %lu leaks, %lu frontiers\n",
+  temp_param.success, temp_param.leaks.size(), temp_param.frontier.size());
+  for (uptr i = 0; i < temp_param.leaks.size(); i++) {
+    VReport(1, "CHILD: leak[%lu] chunk=0x%lx, size=%lu\n", i, temp_param.leaks[i].chunk,
+    temp_param.leaks[i].leaked_size);
+  }
+
   uptr leaks_copy_count = Min(shared->leaks_count, kMaxSharedLeaks);
   for (uptr i = 0; i < leaks_copy_count; ++i) {
     shared->leaks[i] = temp_param.leaks[i];
@@ -111,6 +118,14 @@ void LockStuffAndStopTheWorld(StopTheWorldCallback callback,
   shared_data->leaks_count = 0;
 
   StopTheWorld(AIXSharedCallback, shared_data);
+
+  VReport(1, "PARENT: received success=%d, %lu leaks, %lu frontier\n", shared_data->success,
+  shared_data->leaks_count, shared_data->frontier_count);
+  for (uptr i = 0; i < shared_data->leaks_count; i++) {
+    VReport(1, "PaRENT: leak[%lu] chunk=0x%lx, size=%lu\n", i, shared_data->leaks[i].chunk,
+    shared_data->leaks[i].leaked_size);
+  }
+
   argument->success = shared_data->success;
   argument->leaks.clear();
   for (uptr i = 0; i < shared_data->leaks_count; ++i) {

@@ -285,7 +285,7 @@ static inline bool MaybeUserPointer(uptr p) {
   // Allow 47-bit user-space VMA at current.
   return ((p >> 47) == 0);
 #  else
-  return true;
+  return false;
 #  endif
 }
 
