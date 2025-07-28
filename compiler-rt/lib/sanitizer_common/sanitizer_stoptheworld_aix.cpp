@@ -86,7 +86,8 @@ class SuspendedThreadsListAIX final : public SuspendedThreadsList {
 struct TracerThreadArgument {
   StopTheWorldCallback callback;
   void *callback_argument;
-  Mutex mutex = Mutex(MutexUnchecked);
+  //Mutex mutex = Mutex(MutexUnchecked);
+  Mutex mutex;
   atomic_uintptr_t done;
   uptr parent_pid;
 };
@@ -110,39 +111,41 @@ class ThreadSuspender {
     pid_t pid_;
 };
 
+/*
 void ThreadSuspender::EnumerateThreads() {
   const int kMaxThreadsPerCall = 256;
   THRDS_STRUCT thread_info[kMaxThreadsPerCall];
   TID_TYPE index = 0;
   int count;
 
-
   while ((count = GETTHRDS_CALL(pid_, thread_info, &index, kMaxThreadsPerCall)) > 0) {
     for (int i = 0; i < count; i++) {
       TID_TYPE tid = thread_info[i].ti_tid;
       suspended_threads_list_.Append(tid);
-      VReport(1, "EnumerateThreads: Thread %lu is in state %d\n", tid, thread_info[i].ti_state);
+      //VReport(1, "EnumerateThreads: Thread %lu is in state %d\n", tid, thread_info[i].ti_state);
     }
     if (count < kMaxThreadsPerCall) break;
   }
 }
+*/
 
 void ThreadSuspender::ResumeAllThreads() {
   int pterrno;
   int reg_buffer;
-    if (!internal_iserror(internal_ptrace(PT_DETACH, PTRACE_PID_CAST(pid_), PTRACE_ADDR_CAST(1), 0, &reg_buffer),
-                                          &pterrno)) {
-      VReport(1, "ResumeAllThreads: Detached from process %d\n", pid_);
-    } else {
-      VReport(1, "ResumeAllThreads: Could not detatch from process %d (errno %d)\n", pid_, pterrno);
-    }
+  if (!internal_iserror(internal_ptrace(PT_DETACH, PTRACE_PID_CAST(pid_), PTRACE_ADDR_CAST(1), 0, &reg_buffer),
+                                       &pterrno)) {
+    VReport(2, "Detached from process %d.\n", pid_);
+  } else {
+    VReport(1, "Could not detatch from process %d (errno %d).\n", pid_, pterrno);
+  }
 }
 
 void ThreadSuspender::KillAllThreads() {
-  for (uptr i = 0; i < suspended_threads_list_.ThreadCount(); i++) {
-    ThreadID tid = suspended_threads_list_.GetThreadID(i);
-    internal_ptrace(PT_KILL, PTRACE_PID_CAST(tid), PTRACE_NULL_ADDR, 0, nullptr);
-  }
+  //for (uptr i = 0; i < suspended_threads_list_.ThreadCount(); i++) {
+  //  ThreadID tid = suspended_threads_list_.GetThreadID(i);
+  //  internal_ptrace(PT_KILL, PTRACE_PID_CAST(tid), PTRACE_NULL_ADDR, 0, nullptr);
+  //}
+  internal_ptrace(PT_KILL, pid_, PTRACE_NULL_ADDR, 0, nullptr);
 }
 
 bool ThreadSuspender::SuspendAllThreads() {
@@ -150,36 +153,53 @@ bool ThreadSuspender::SuspendAllThreads() {
   int reg_buffer;
   if (internal_iserror(internal_ptrace(PT_ATTACH, PTRACE_PID_CAST(pid_), PTRACE_NULL_ADDR, 0, &reg_buffer),
       &pterrno)) {
-    VReport(1, "SuspendAllThreads:Could not attach to process %d (errno %d)\n", pid_, pterrno);
+    VReport(1, "Could not attach to process %d (errno %d)\n", pid_, pterrno);
     return false;
   }
-  VReport(1, "SuspendAllThreads: Attached to process %d\n", pid_);
+  //VReport(1, "SuspendAllThreads: Attached to process %d\n", pid_);
 
   int status;
   uptr waitpid_status;
   HANDLE_EINTR(waitpid_status, internal_waitpid(pid_, &status, 0));
 
-  if (internal_iserror(waitpid_status, &pterrno)) {
-    VReport(1, "SuspendAllThreads: waitpid failed process %d (errno %d)\n", pid_, pterrno);
-    internal_ptrace(PT_DETACH, PTRACE_PID_CAST(pid_), PTRACE_ADDR_CAST(1), 0, &reg_buffer);
-    return false;
+  VReport(1, "Attached to process %d.\n", pid_);
+
+  //if (internal_iserror(waitpid_status, &pterrno)) {
+  //  VReport(1, "SuspendAllThreads: waitpid failed process %d (errno %d)\n", pid_, pterrno);
+  //  internal_ptrace(PT_DETACH, PTRACE_PID_CAST(pid_), PTRACE_ADDR_CAST(1), 0, &reg_buffer);
+  //  return false;
+  //}
+
+  //if (!WIFSTOPPED(status)) {
+  //  VReport(1, "SuspendAllThreads: Process %d did not stop after attach (status %d)\n", pid_, status);
+  //  internal_ptrace(PT_DETACH, PTRACE_PID_CAST(pid_), PTRACE_ADDR_CAST(1), 0, &reg_buffer);
+  //  return false;
+  //}
+
+  //EnumerateThreads();
+  const int kMaxThreadsPerCall = 256;
+  THRDS_STRUCT thread_info[kMaxThreadsPerCall];
+  TID_TYPE index = 0;
+  int count;
+
+  while ((count = GETTHRDS_CALL(pid_, thread_info, &index, kMaxThreadsPerCall)) > 0) {
+    for (int i = 0; i < count; i++) {
+      TID_TYPE tid = thread_info[i].ti_tid;
+      suspended_threads_list_.Append(tid);
+      VReport(2, "Appended thread %d in process %d.\n", tid, pid_);
+    }
+    if (count < kMaxThreadsPerCall) break;
   }
 
-  if (!WIFSTOPPED(status)) {
-    VReport(1, "SuspendAllThreads: Process %d did not stop after attach (status %d)\n", pid_, status);
-    internal_ptrace(PT_DETACH, PTRACE_PID_CAST(pid_), PTRACE_ADDR_CAST(1), 0, &reg_buffer);
-    return false;
-  }
-
-  EnumerateThreads();
-
-  VReport(1, "SuspendAllThreads: Success\n");
+  //VReport(1, "SuspendAllThreads: Success\n");
   return true;
 }
+
 
 static ThreadSuspender *thread_suspender_instance = nullptr;
 
 static const int kSyncSignals[] = {SIGABRT, SIGILL, SIGFPE, SIGSEGV, SIGBUS, SIGXCPU, SIGXFSZ};
+
 
 static void TracerThreadDieCallback() {
   ThreadSuspender *inst = thread_suspender_instance;
@@ -188,6 +208,8 @@ static void TracerThreadDieCallback() {
     thread_suspender_instance = nullptr;
   }
 }
+
+
 
 static void TracerThreadSignalHandler(int signum, __sanitizer_siginfo *siginfo, void *uctx) {
   SignalContext ctx(siginfo, uctx);
@@ -206,38 +228,46 @@ static void TracerThreadSignalHandler(int signum, __sanitizer_siginfo *siginfo, 
 
 static const int kHandlerStackSize = 8192;
 
+
+
 static int TracerThread(void* argument) {
-  VReport(1, "TracerThread: starting\n");
+  //VReport(1, "TracerThread: starting\n");
   TracerThreadArgument *tracer_thread_argument = (TracerThreadArgument *)argument;
 
-  VReport(1, "TracerThread: checking parent pid\n");
+  //VReport(1, "TracerThread: checking parent pid\n");
   if (internal_getppid() != tracer_thread_argument->parent_pid)
     internal__exit(4);
 
-  tracer_thread_argument->mutex.~Mutex();
-  new (&tracer_thread_argument->mutex) Mutex(MutexUnchecked);
+  //tracer_thread_argument->mutex.~Mutex();
+  //new (&tracer_thread_argument->mutex) Mutex(MutexUnchecked);
+  //VReport(1, "TrackerThread: Waiting for mutex\n");
 
-  VReport(1, "TrackerThread: Waiting for mutex\n");
+  // Wait for parent thread to finish preparations.
   tracer_thread_argument->mutex.Lock();
   tracer_thread_argument->mutex.Unlock();
 
-  VReport(1, "TracerThread: Adding die callback\n");
+  //VReport(1, "TracerThread: Adding die callback\n");
+
   RAW_CHECK(AddDieCallback(TracerThreadDieCallback));
 
-  VReport(1, "TracerThread: Creating ThreadSuspender\n");
+  //VReport(1, "TracerThread: Creating ThreadSuspender\n");
+
   ThreadSuspender thread_suspender(internal_getppid(), tracer_thread_argument);
   thread_suspender_instance = &thread_suspender;
 
-  VReport(1, "TracerThread: Setting up signal stack\n");
-  InternalMmapVector<char> handler_stack_memory(kHandlerStackSize);
+  //VReport(1, "TracerThread: Setting up signal stack\n");
 
+  InternalMmapVector<char> handler_stack_memory(kHandlerStackSize);
   stack_t handler_stack;
   internal_memset(&handler_stack, 0, sizeof(handler_stack));
   handler_stack.ss_sp = handler_stack_memory.data();
   handler_stack.ss_size = kHandlerStackSize;
   internal_sigaltstack(&handler_stack, nullptr);
 
-  VReport(1, "TracerThread: Installing signal handlers\n");
+  //VReport(1, "TracerThread: Installing signal handlers\n");
+
+  // Install our handler for synchronous signals. Other signals should be
+  // blocked by the mask we inherited from the parent thread.
   for (uptr i = 0; i < ARRAY_SIZE(kSyncSignals); i++) {
     __sanitizer_sigaction act;
     internal_memset(&act, 0 , sizeof(act));
@@ -246,34 +276,33 @@ static int TracerThread(void* argument) {
     internal_sigaction_norestorer(kSyncSignals[i], &act, 0);
   }
 
-  VReport(1, "TracerThread: About to call SuspendAllThreads\n");
+  //VReport(1, "TracerThread: About to call SuspendAllThreads\n");
+
   int exit_code = 0;
   if (!thread_suspender.SuspendAllThreads()) {
-    VReport(1, "TracerThread: SuspendAllThreads failed\n");
+    VReport(1, "Failed suspending threads.\n");
     exit_code = 3;
   } else {
-    VReport(1, "TracerThread: SuspendAllThreads succeeded\n");
-    const SuspendedThreadsList &suspended_list = thread_suspender.suspended_threads_list();
-    VReport(1, "TracerThread: passing %lu suspended threads to callback\n",
-    suspended_list.ThreadCount());
+    //const SuspendedThreadsList &suspended_list = thread_suspender.suspended_threads_list();
     tracer_thread_argument->callback(thread_suspender.suspended_threads_list(),
                                       tracer_thread_argument->callback_argument);
-    VReport(1, "TracerThread: Callback complete\n");
     thread_suspender.ResumeAllThreads();
-    VReport(1, "TracerThread: Threads resumed.\n");
     exit_code = 0;
   }
-  VReport(1, "TracerThread: Cleaning die callback\n");
+  //VReport(1, "TracerThread: Cleaning die callback\n");
   RAW_CHECK(RemoveDieCallback(TracerThreadDieCallback));
   thread_suspender_instance = nullptr;
-  VReport(1, "TracerThread: Setting done flag\n");
-  atomic_store(&tracer_thread_argument->done, 1, memory_order_release);
+  //VReport(1, "TracerThread: Setting done flag\n");
+  //atomic_store(&tracer_thread_argument->done, 1, memory_order_release);
+  atomic_store(&tracer_thread_argument->done, 1, memory_order_relaxed);
   return exit_code;
 }
 
+/*
 class ScopedStackSpaceWithGuard {
   public:
     explicit ScopedStackSpaceWithGuard(uptr stack_size) {
+      // Remove this?
       stack_size_ = stack_size;
       guard_size_ = GetPageSizeCached();
       guard_start_ = (uptr)MmapOrDie(stack_size_ + guard_size_, "ScopedStackWithGuard");
@@ -282,15 +311,17 @@ class ScopedStackSpaceWithGuard {
   ~ScopedStackSpaceWithGuard() {
     UnmapOrDie((void *)guard_start_, stack_size_ + guard_size_);
   }
-  void *Bottom() const {
-    return (void *)(guard_start_ + stack_size_ + guard_size_);
-  }
+  // Remove this
+  //void *Bottom() const {
+  //  return (void *)(guard_start_ + stack_size_ + guard_size_);
+  //}
 
   private:
     uptr stack_size_;
     uptr guard_size_;
     uptr guard_start_;
 };
+*/
 
 static __sanitizer_sigset_t blocked_sigset;
 static __sanitizer_sigset_t old_sigset;
@@ -310,7 +341,9 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
   //SuspendedThreadsListAIX dummy;
   //callback(dummy, argument);
   //return;
-  VReport(1, "LeakSanitizer: Stopping the world.\n");
+  //VReport(1, "LeakSanitizer: Stopping the world.\n");
+
+  // Have to use shared memory here for cross process communication.
   struct TracerThreadArgument *tracer_thread_argument =
     (struct TracerThreadArgument *)internal_mmap(nullptr, sizeof(struct TracerThreadArgument),        PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
   new (tracer_thread_argument) TracerThreadArgument();
@@ -319,8 +352,9 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
   tracer_thread_argument->callback_argument = argument;
   tracer_thread_argument->parent_pid = internal_getpid();
   atomic_store(&tracer_thread_argument->done, 0, memory_order_relaxed);
-  const uptr kTracerStackSize = 2 * 1024 * 1024;
-  ScopedStackSpaceWithGuard tracer_stack(kTracerStackSize);
+  //const uptr kTracerStackSize = 2 * 1024 * 1024;
+  // Remove this?
+  //ScopedStackSpaceWithGuard tracer_stack(kTracerStackSize);
 
   tracer_thread_argument->mutex.Lock();
 
@@ -329,47 +363,48 @@ void StopTheWorld(StopTheWorldCallback callback, void *argument) {
     internal_sigdelset(&blocked_sigset, kSyncSignals[i]);
   int rv = internal_sigprocmask(SIG_BLOCK, &blocked_sigset, &old_sigset);
   CHECK_EQ(rv, 0);
-  VReport(1, "StopTheWorld: Forking tracer process.\n");
+  //VReport(1, "StopTheWorld: Forking tracer process.\n");
   uptr tracer_pid = internal_fork();
   if (tracer_pid == 0) {
-    VReport(1, "StopTheWorld: In tracer process, calling TracerThread.\n");
+    VReport(2, "In tracer process, calling TracerThread.\n");
     internal__exit(TracerThread(tracer_thread_argument));
   }
-  VReport(1, "StopTheWorld: Tracer forked with PID %lu.\n", tracer_pid);
+  VReport(2, "Tracer forked with PID %lu.\n", tracer_pid);
   internal_sigprocmask(SIG_SETMASK, &old_sigset, 0);
   int local_errno = 0;
   if (internal_iserror(tracer_pid, &local_errno)) {
-    VReport(1, "StopTheWorld: Fork failed with errno %d\n", local_errno);
+    VReport(1, "Failed spawning a tracer thread (errno %d).\n", local_errno);
     tracer_thread_argument->mutex.Unlock();
   } else {
     ScopedSetTracerPID scoped_set_tracer_pid(tracer_pid);
     tracer_thread_argument->mutex.Unlock();
-    VReport(1, "StopTheWorld: Waiting for tracer to complete\n");
-    uptr wait_iterations = 0;
-    while (atomic_load(&tracer_thread_argument->done, memory_order_acquire) == 0) {
-      wait_iterations++;
-      if (wait_iterations % 10000 == 0) {
-        VReport(1, "StopTheWorld: Waiting ... (iteration %lu)\n", wait_iterations);
-      }
+    //VReport(1, "StopTheWorld: Waiting for tracer to complete\n");
+    //uptr wait_iterations = 0;
+    while (atomic_load(&tracer_thread_argument->done, memory_order_relaxed) == 0)
       sched_yield();
-    }
-    VReport(1, "StopTheWorld: Waiting for tracer process %lu to exit\n", tracer_pid);
+      //wait_iterations++;
+      //if (wait_iterations % 10000 == 0) {
+      //  VReport(1, "StopTheWorld: Waiting ... (iteration %lu)\n", wait_iterations);
+      //}
+      //sched_yield();
+    //}
+    //VReport(1, "StopTheWorld: Waiting for tracer process %lu to exit\n", tracer_pid);
     for (;;) {
       uptr waitpid_status = internal_waitpid(tracer_pid, nullptr, 0);
-      if (!internal_iserror(waitpid_status, &local_errno)) {
-        VReport(1, "StopTheWorld: Tracer process exited sucessfully\n");
-        break;
-      }
-      if (local_errno == EINTR) {
-        VReport(1, "StopTheWorld: waitpid interrupted\n");
-        continue;
-      }
-      VReport(1, "StopTheWorld: waitpid failed with errno %d\n", local_errno);
+      if (!internal_iserror(waitpid_status, &local_errno)) break;
+        //VReport(1, "StopTheWorld: Tracer process exited sucessfully\n");
+        //break;
+      //}
+      if (local_errno == EINTR) continue;
+      //if (local_errno == EINTR) {
+      //  VReport(1, "StopTheWorld: waitpid interrupted\n");
+      //  continue;
+      //}
+      VReport(1, "Waiting on the tracer thread failed (errno %d).\n", local_errno);
       break;
     }
   }
-  VReport(1, "StopTheWorld: Complete.\n");
-
+  //VReport(1, "StopTheWorld: Complete.\n");
   tracer_thread_argument->~TracerThreadArgument();
   internal_munmap(tracer_thread_argument, sizeof(struct TracerThreadArgument));
 }
@@ -378,28 +413,18 @@ PtraceRegistersStatus SuspendedThreadsListAIX::GetRegistersAndSP(
     uptr index, InternalMmapVector<uptr> *buffer, uptr *sp) const {
   CHECK_LT(index, thread_ids_.size());
   ThreadID tid = thread_ids_[index];
-
+  buffer->resize(RoundUpTo(GPRS_BUFFER_SIZE, sizeof(uptr)) / sizeof(uptr));
   int pterrno;
 
-  char gprs_raw_buffer[GPRS_BUFFER_SIZE];
-
-  if (internal_iserror(internal_ptrace(PTT_READ_GPRS, PTRACE_PID_CAST(tid), PTRACE_ADDR_CAST(gprs_raw_buffer), 0,
+  if (internal_iserror(internal_ptrace(PTT_READ_GPRS, PTRACE_PID_CAST(tid),
+    PTRACE_ADDR_CAST(buffer->data()), 0,
     nullptr), &pterrno)) {
-    VReport(1, "Failed to read GPRs for thread %lu (errno %d)\n", tid, pterrno);
+    VReport(1, "Could not get registers from thread %d (errno %d)\n", tid, pterrno);
     return pterrno == ESRCH ? REGISTERS_UNAVAILABLE_FATAL : REGISTERS_UNAVAILABLE;
   }
 
-typedef struct {
-  GPR_TYPE gpr[NUM_GPRS];
-} aix_regs_struct;
-
-  GPR_TYPE *gprs = (GPR_TYPE*)gprs_raw_buffer;
-  buffer->resize(RoundUpTo(sizeof(aix_regs_struct), sizeof(uptr)) / sizeof(uptr));
-  aix_regs_struct *regs = reinterpret_cast<aix_regs_struct *>(buffer->data());
-  for (int i = 0; i < NUM_GPRS; i++) {
-    regs->gpr[i] = gprs[i];
-  }
-  *sp = (uptr)regs->gpr[GPR1];
+  GPR_TYPE *gprs = reinterpret_cast<GPR_TYPE*>(buffer->data());
+  *sp = (uptr)gprs[GPR1];
 
   return REGISTERS_AVAILABLE;
 }
@@ -415,14 +440,11 @@ uptr SuspendedThreadsListAIX::ThreadCount() const {
 }
 
 bool SuspendedThreadsListAIX::ContainsTid(ThreadID thread_id) const {
-  VReport(1, "ContainsTid: called for thread %lu\n", thread_id);
   for (uptr i = 0; i < thread_ids_.size(); i++) {
     if (thread_ids_[i] == thread_id) {
-      VReport(1, "ContainsTid: found thread %lu at index %lu\n", thread_id, i);
       return true;
     }
   }
-  VReport(1, "ContainsTid: Thread %lu not found\n", thread_id);
   return false;
 }
 
