@@ -45,7 +45,7 @@ void ProcessPlatformSpecificAllocations(Frontier *frontier) {}
 void HandleLeaks() {}
 
 static const uptr kMaxSharedLeaks = 1024;
-static const uptr kMaxSharedFrontier = 4096;
+static const uptr kMaxSharedFrontier = 1024;
 
 struct AIXSharedLeakData {
   StopTheWorldCallback original_callback;
@@ -88,7 +88,8 @@ void LockStuffAndStopTheWorld(StopTheWorldCallback callback,
                               CheckForLeaksParam *argument) {
   ScopedStopTheWorldLock lock;
   
-  // AIXSharedLeakData is needed to share CheckForLeaksParam data across processes
+  // The AIX stop the world implementation uses fork, so AIXSharedLeakData is needed
+  // to share CheckForLeaksParam data across processes
   AIXSharedLeakData *shared_data = (AIXSharedLeakData *)internal_mmap(nullptr,
     sizeof(AIXSharedLeakData), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
 
