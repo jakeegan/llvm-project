@@ -44,8 +44,6 @@ void ProcessPlatformSpecificAllocations(Frontier *frontier) {}
 
 void HandleLeaks() {}
 
-/*
-
 static const uptr kMaxSharedLeaks = 1024;
 static const uptr kMaxSharedFrontier = 4096;
 
@@ -73,13 +71,6 @@ static void AIXSharedCallback(const SuspendedThreadsList &suspended_threads, voi
   shared->frontier_count = temp_param.frontier.size();
   shared->leaks_count = temp_param.leaks.size();
 
-  //VReport(1, "CHILD: callback returned succesfully=%d, found %lu leaks, %lu frontiers\n",
-  //temp_param.success, temp_param.leaks.size(), temp_param.frontier.size());
-  //for (uptr i = 0; i < temp_param.leaks.size(); i++) {
-    //VReport(1, "CHILD: leak[%lu] chunk=0x%lx, size=%lu\n", i, temp_param.leaks[i].chunk,
-    //temp_param.leaks[i].leaked_size);
-  //}
-
   uptr leaks_copy_count = Min(shared->leaks_count, kMaxSharedLeaks);
   for (uptr i = 0; i < leaks_copy_count; ++i) {
     shared->leaks[i] = temp_param.leaks[i];
@@ -93,55 +84,24 @@ static void AIXSharedCallback(const SuspendedThreadsList &suspended_threads, voi
   shared->frontier_count = frontier_copy_count;
 }
 
-*/
-
 void LockStuffAndStopTheWorld(StopTheWorldCallback callback,
                               CheckForLeaksParam *argument) {
   ScopedStopTheWorldLock lock;
-  //StopTheWorld(callback, argument);
-  //return;
-
-  // Needs to be shared memory to move the data across process
-  CheckForLeaksParam *shared_argument = (CheckForLeaksParam *)internal_mmap(nullptr,
-  sizeof(CheckForLeaksParam), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
-  new (shared_argument) CheckForLeaksParam();
-  shared_argument->caller_tid = argument->caller_tid;
-  shared_argument->caller_sp = argument->caller_sp;
-  shared_argument->success = argument->success;
-
-  StopTheWorld(callback, shared_argument);
-
-  argument->leaks.clear();
-  for (uptr i = 0; i < shared_argument->leaks.size(); ++i) {
-    argument->leaks.push_back(shared_argument->leaks[i]);
-  }
-  argument->frontier.clear();
-  for (uptr i = 0; i < shared_argument->frontier.size(); ++i) {
-    argument->frontier.push_back(shared_argument->frontier[i]);
-  }
-  argument->success = shared_argument->success;
-  internal_munmap(shared_argument, sizeof(CheckForLeaksParam));
-
-  /*
+  
+  // AIXSharedLeakData is needed to share CheckForLeaksParam data across processes
   AIXSharedLeakData *shared_data = (AIXSharedLeakData *)internal_mmap(nullptr,
     sizeof(AIXSharedLeakData), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
 
   shared_data->original_callback = callback;
   shared_data->caller_tid = argument->caller_tid;
   shared_data->caller_sp = argument->caller_sp;
-  shared_data->success = false;
+  shared_data->success = argument->success;
   shared_data->frontier_count = 0;
   shared_data->leaks_count = 0;
 
   StopTheWorld(AIXSharedCallback, shared_data);
 
-  VReport(1, "PARENT: received success=%d, %lu leaks, %lu frontier\n", shared_data->success,
-  shared_data->leaks_count, shared_data->frontier_count);
-  for (uptr i = 0; i < shared_data->leaks_count; i++) {
-    VReport(1, "PaRENT: leak[%lu] chunk=0x%lx, size=%lu\n", i, shared_data->leaks[i].chunk,
-    shared_data->leaks[i].leaked_size);
-  }
-
+  // Update argument with leak data from the child process
   argument->success = shared_data->success;
   argument->leaks.clear();
   for (uptr i = 0; i < shared_data->leaks_count; ++i) {
@@ -152,7 +112,6 @@ void LockStuffAndStopTheWorld(StopTheWorldCallback callback,
     argument->frontier.push_back(shared_data->frontier[i]);
   }
   internal_munmap(shared_data, sizeof(AIXSharedLeakData));
-  */
 }
 
 LoadedModule *GetLinker() { return nullptr; }
