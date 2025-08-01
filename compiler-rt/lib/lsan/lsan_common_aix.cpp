@@ -23,6 +23,7 @@
 #include "sanitizer_common/sanitizer_posix.h"
 #include "sanitizer_common/sanitizer_placement_new.h"
 #include "sanitizer_common/sanitizer_thread_registry.h"
+#include "sanitizer_common/sanitizer_procmaps.h"
 
 namespace __lsan {
 
@@ -38,10 +39,25 @@ void EnableInThisThread() {
   disable_counter--;
 }
 
-void ProcessGlobalRegions(Frontier *frontier) {}
+void ProcessGlobalRegions(Frontier *frontier) {
+  if (!flags()->use_globals) return;
+
+  MemoryMappingLayout memory_mapping(false);
+  MemoryMappedSegment segment;
+
+  while (memory_mapping.Next(&segment)) {
+    if (!(segment.protection & kProtectionWrite) || (segment.protection & kProtectionExecute))
+      continue;
+
+    ScanGlobalRange(segment.start, segment.end, frontier);
+  }
+}
 
 void ProcessPlatformSpecificAllocations(Frontier *frontier) {}
 
+// On AIX, we can intercept _exit gracefully, and return a failing exit code
+// if required at that point. Calling Die() here is undefined behavior and
+// causes rare race conditions.
 void HandleLeaks() {}
 
 static const uptr kMaxSharedLeaks = 1024;
@@ -118,7 +134,5 @@ void LockStuffAndStopTheWorld(StopTheWorldCallback callback,
 LoadedModule *GetLinker() { return nullptr; }
 
 }  // namespace __lsan
-
-
 
 #endif
