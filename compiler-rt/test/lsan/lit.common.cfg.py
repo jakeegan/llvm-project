@@ -91,6 +91,10 @@ config.substitutions.append(("%clangxx_lsan ", build_invocation(clang_lsan_cxxfl
 config.substitutions.append(("%clang_hwasan ", build_invocation(clang_lsan_cflags)))
 config.substitutions.append(("%clangxx_hwasan ", build_invocation(clang_lsan_cxxflags)))
 
+#is_lsan_asan_mode = ("asan" in config.available_features or "AddressSanitizer" in config.name)
+supported_aix = (config.host_os == "AIX" and config.target_arch in ["ppc64", "ppc", "powerpc64",
+"powerpc"]
+                and lsan_lit_test_mode == "AddressSanitizer")
 
 # LeakSanitizer tests are currently supported on
 # Android{aarch64, x86, x86_64}, x86-64 Linux, PowerPC64 Linux, arm Linux, mips64 Linux, s390x Linux, loongarch64 Linux and x86_64 Darwin.
@@ -122,7 +126,8 @@ supported_netbsd = config.host_os == "NetBSD" and config.target_arch in [
     "x86_64",
     "i386",
 ]
-if not (supported_android or supported_linux or supported_darwin or supported_netbsd):
+if not (supported_android or supported_linux or supported_darwin or supported_netbsd or
+  supported_aix):
     config.unsupported = True
 
 # Don't support Thumb due to broken fast unwinder

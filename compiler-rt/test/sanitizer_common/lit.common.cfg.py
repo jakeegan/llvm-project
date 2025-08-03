@@ -95,6 +95,9 @@ config.suffixes = [".c", ".cpp"]
 if config.host_os not in ["Linux", "Darwin", "NetBSD", "FreeBSD", "SunOS", "AIX"]:
     config.unsupported = True
 
+if config.host_os == "AIX" and "lsan" in config.name.lower():
+  config.unsupported = True
+
 if not config.parallelism_group:
     config.parallelism_group = "shadow-memory"
 
