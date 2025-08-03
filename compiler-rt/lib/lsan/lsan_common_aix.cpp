@@ -49,6 +49,13 @@ void ProcessGlobalRegions(Frontier *frontier) {
     if (!(segment.protection & kProtectionWrite) || (segment.protection & kProtectionExecute))
       continue;
 
+    const uptr kMaxGlobalSectionSize = 256 * 1024 * 1024;
+    uptr segment_size = segment.end - segment.start;
+    if (segment_size > kMaxGlobalSectionSize) {
+      VReport(1, "ProcessGlobalRegions: Skipping");
+      continue; 
+    }
+
     ScanGlobalRange(segment.start, segment.end, frontier);
   }
 }
@@ -118,7 +125,7 @@ void LockStuffAndStopTheWorld(StopTheWorldCallback callback,
 
   StopTheWorld(AIXSharedCallback, shared_data);
 
-  // Update argument with leak data from the child process
+  // Update argument with data from the child process
   argument->success = shared_data->success;
   argument->leaks.clear();
   for (uptr i = 0; i < shared_data->leaks_count; ++i) {
