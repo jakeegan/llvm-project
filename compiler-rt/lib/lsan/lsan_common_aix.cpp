@@ -62,10 +62,9 @@ void ProcessGlobalRegions(Frontier *frontier) {
 
 void ProcessPlatformSpecificAllocations(Frontier *frontier) {}
 
-// On AIX, we can intercept _exit gracefully, and return a failing exit code
-// if required at that point. Calling Die() here is undefined behavior and
-// causes rare race conditions.
-void HandleLeaks() {}
+void HandleLeaks() {
+  internal__exit(common_flags()->exitcode);
+}
 
 static const uptr kMaxSharedLeaks = 1024;
 static const uptr kMaxSharedFrontier = 1024;

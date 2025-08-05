@@ -53,5 +53,5 @@ int main(int argc, char **argv) {
 }
 
 // LEAK: LeakSanitizer: detected memory leaks
-// LEAK123: in main
+// LEAK123: in {{\.?main}}
 // LEAK234: in thread_free

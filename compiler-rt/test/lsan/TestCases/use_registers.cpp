@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int sync = 0;
+int sync_flag = 0;
 
 extern "C" void *registers_thread_func(void *) {
   void *p = malloc(1337);
@@ -47,7 +47,7 @@ extern "C" void *registers_thread_func(void *) {
       : "r"(p));
 #elif defined(__loongarch_lp64)
   asm("move $s8, %0" : : "r"(p));
-#elif defined(__powerpc__)
+#elif defined(__powerpc__) || defined(__powerpc64__)
   asm("mr 30, %0"
       :
       : "r"(p));
@@ -62,7 +62,7 @@ extern "C" void *registers_thread_func(void *) {
 #else
 #error "Test is not supported on this architecture."
 #endif
-  __sync_fetch_and_xor(&sync, 1);
+  __sync_fetch_and_xor(&sync_flag, 1);
   }
 }
 
@@ -70,7 +70,7 @@ int main() {
   pthread_t thread_id;
   int res = pthread_create(&thread_id, 0, registers_thread_func, nullptr);
   assert(res == 0);
-  while (!__sync_fetch_and_xor(&sync, 0))
+  while (!__sync_fetch_and_xor(&sync_flag, 0))
     sched_yield();
   return 0;
 }
