@@ -48,7 +48,6 @@ void ProcessGlobalRegions(Frontier *frontier) {
   memory_mapping.DumpListOfModules(&modules);
 
   for (uptr i = 0; i < modules.size(); ++i) {
-    //if (modules[i].instrumented()) continue;
     for (const __sanitizer::LoadedModule::AddressRange &range : modules[i].ranges()) {
       if (range.executable || !range.writable) continue;
       // TODO: filter sections that can't contain global pointers to be safe 
