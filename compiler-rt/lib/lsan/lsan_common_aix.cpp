@@ -40,26 +40,6 @@ void EnableInThisThread() {
   disable_counter--;
 }
 
-static const char *kAIXSkippedSecNames[] = {
-  ".loader",
-  ".debug",
-  ".tdata",
-  ".tbss",
-  ".except",
-  ".typchk",
-  ".info",
-  ".ovrflo",
-  ".tocbase"
-};
-
-static bool ShouldSkipAIXSection(const char *section_name) {
-  if (!section_name) return false;
-
-  for (auto name: kAIXSkippedSecNames)
-    if (internal_strcmp(section_name, name) == 0) return true;
-  return false;
-}
-
 void ProcessGlobalRegions(Frontier *frontier) {
   if (!flags()->use_globals) return;
   MemoryMappingLayout memory_mapping(false);
@@ -68,11 +48,10 @@ void ProcessGlobalRegions(Frontier *frontier) {
   memory_mapping.DumpListOfModules(&modules);
 
   for (uptr i = 0; i < modules.size(); ++i) {
-    if (modules[i].instrumented()) continue;
-
+    //if (modules[i].instrumented()) continue;
     for (const __sanitizer::LoadedModule::AddressRange &range : modules[i].ranges()) {
       if (range.executable || !range.writable) continue;
-      if (ShouldSkipAIXSection(range.name)) continue;
+      // TODO: filter sections that can't contain global pointers to be safe 
       ScanGlobalRange(range.beg, range.end, frontier);
     }
   }
