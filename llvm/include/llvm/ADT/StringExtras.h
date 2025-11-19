@@ -179,7 +179,8 @@ inline std::string utohexstr(uint64_t X, bool LowerCase = false,
   char Buffer[17];
   char *BufPtr = std::end(Buffer);
 
-  if (X == 0) *--BufPtr = '0';
+  if (X == 0 && !Width)
+    *--BufPtr = '0';
 
   for (unsigned i = 0; Width ? (i < Width) : X; ++i) {
     unsigned char Mod = static_cast<unsigned char>(X) & 15;
@@ -528,13 +529,15 @@ inline std::string join_items(Sep Separator, Args &&... Items) {
 class ListSeparator {
   bool First = true;
   StringRef Separator;
+  StringRef Prefix;
 
 public:
-  ListSeparator(StringRef Separator = ", ") : Separator(Separator) {}
+  ListSeparator(StringRef Separator = ", ", StringRef Prefix = "")
+      : Separator(Separator), Prefix(Prefix) {}
   operator StringRef() {
     if (First) {
       First = false;
-      return {};
+      return Prefix;
     }
     return Separator;
   }

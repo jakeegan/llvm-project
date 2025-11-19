@@ -101,8 +101,8 @@ static void saveTempBitcode(const Module &TheModule, StringRef TempDir,
   WriteBitcodeToFile(TheModule, OS, /* ShouldPreserveUseListOrder */ true);
 }
 
-static const GlobalValueSummary *
-getFirstDefinitionForLinker(const GlobalValueSummaryList &GVSummaryList) {
+static const GlobalValueSummary *getFirstDefinitionForLinker(
+    ArrayRef<std::unique_ptr<GlobalValueSummary>> GVSummaryList) {
   // If there is any strong definition anywhere, get it.
   auto StrongDefForLinker = llvm::find_if(
       GVSummaryList, [](const std::unique_ptr<GlobalValueSummary> &Summary) {
@@ -131,14 +131,15 @@ getFirstDefinitionForLinker(const GlobalValueSummaryList &GVSummaryList) {
 static void computePrevailingCopies(
     const ModuleSummaryIndex &Index,
     DenseMap<GlobalValue::GUID, const GlobalValueSummary *> &PrevailingCopy) {
-  auto HasMultipleCopies = [&](const GlobalValueSummaryList &GVSummaryList) {
-    return GVSummaryList.size() > 1;
-  };
+  auto HasMultipleCopies =
+      [&](ArrayRef<std::unique_ptr<GlobalValueSummary>> GVSummaryList) {
+        return GVSummaryList.size() > 1;
+      };
 
   for (auto &I : Index) {
-    if (HasMultipleCopies(I.second.SummaryList))
+    if (HasMultipleCopies(I.second.getSummaryList()))
       PrevailingCopy[I.first] =
-          getFirstDefinitionForLinker(I.second.SummaryList);
+          getFirstDefinitionForLinker(I.second.getSummaryList());
   }
 }
 
@@ -163,7 +164,7 @@ namespace {
 class ThinLTODiagnosticInfo : public DiagnosticInfo {
   const Twine &Msg;
 public:
-  ThinLTODiagnosticInfo(const Twine &DiagMsg,
+  ThinLTODiagnosticInfo(const Twine &DiagMsg LLVM_LIFETIME_BOUND,
                         DiagnosticSeverity Severity = DS_Error)
       : DiagnosticInfo(DK_Linker, Severity), Msg(DiagMsg) {}
   void print(DiagnosticPrinter &DP) const override { DP << Msg; }

@@ -33,6 +33,7 @@ clang_diag_gen(Parse)
 clang_diag_gen(Refactoring)
 clang_diag_gen(Sema)
 clang_diag_gen(Serialization)
+clang_diag_gen(Trap)
 clang_tablegen(DiagnosticGroups.inc -gen-clang-diag-groups
   SOURCE Diagnostic.td
   TARGET ClangDiagnosticGroups)
@@ -109,9 +110,17 @@ clang_tablegen(BuiltinsRISCV.inc -gen-clang-builtins
   SOURCE BuiltinsRISCV.td
   TARGET ClangBuiltinsRISCV)
 
-clang_tablegen(BuiltinsSPIRV.inc -gen-clang-builtins
-  SOURCE BuiltinsSPIRV.td
-  TARGET ClangBuiltinsSPIRV)
+clang_tablegen(BuiltinsSPIRVCommon.inc -gen-clang-builtins
+  SOURCE BuiltinsSPIRVCommon.td
+  TARGET ClangBuiltinsSPIRVCommon)
+
+clang_tablegen(BuiltinsSPIRVVK.inc -gen-clang-builtins
+  SOURCE BuiltinsSPIRVVK.td
+  TARGET ClangBuiltinsSPIRVVK)
+
+clang_tablegen(BuiltinsSPIRVCL.inc -gen-clang-builtins
+  SOURCE BuiltinsSPIRVCL.td
+  TARGET ClangBuiltinsSPIRVCL)
 
 clang_tablegen(BuiltinsX86.inc -gen-clang-builtins
   SOURCE BuiltinsX86.td
@@ -150,6 +159,9 @@ clang_tablegen(arm_mve_builtin_aliases.inc -gen-arm-mve-builtin-aliases
 clang_tablegen(arm_sve_builtins.inc -gen-arm-sve-builtins
   SOURCE arm_sve.td
   TARGET ClangARMSveBuiltins)
+clang_tablegen(arm_sve_builtins.json -gen-arm-sve-builtins-json
+  SOURCE arm_sve.td
+  TARGET ClangARMSveBuiltinsJSON)
 clang_tablegen(arm_sve_builtin_cg.inc -gen-arm-sve-builtin-codegen
   SOURCE arm_sve.td
   TARGET ClangARMSveBuiltinCG)
@@ -165,6 +177,9 @@ clang_tablegen(arm_sve_streaming_attrs.inc -gen-arm-sve-streaming-attrs
 clang_tablegen(arm_sme_builtins.inc -gen-arm-sme-builtins
   SOURCE arm_sme.td
   TARGET ClangARMSmeBuiltins)
+clang_tablegen(arm_sme_builtins.json -gen-arm-sme-builtins-json
+  SOURCE arm_sme.td
+  TARGET ClangARMSmeBuiltinsJSON)
 clang_tablegen(arm_sme_builtin_cg.inc -gen-arm-sme-builtin-codegen
   SOURCE arm_sme.td
   TARGET ClangARMSmeBuiltinCG)

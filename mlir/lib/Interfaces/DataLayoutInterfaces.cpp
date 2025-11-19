@@ -321,6 +321,16 @@ Attribute mlir::detail::getDefaultFunctionPointerAlignment(
   return entry.getValue();
 }
 
+// Returns the legal int widths if specified in the given entry. If the entry is
+// empty the default legal int widths represented by an empty attribute is
+// returned.
+Attribute
+mlir::detail::getDefaultLegalIntWidths(DataLayoutEntryInterface entry) {
+  if (entry == DataLayoutEntryInterface())
+    return Attribute();
+  return entry.getValue();
+}
+
 std::optional<Attribute>
 mlir::detail::getDevicePropertyValue(DataLayoutEntryInterface entry) {
   if (entry == DataLayoutEntryInterface())
@@ -354,10 +364,7 @@ static DataLayoutSpecInterface getSpec(Operation *operation) {
   return llvm::TypeSwitch<Operation *, DataLayoutSpecInterface>(operation)
       .Case<ModuleOp, DataLayoutOpInterface>(
           [&](auto op) { return op.getDataLayoutSpec(); })
-      .Default([](Operation *) {
-        llvm_unreachable("expected an op with data layout spec");
-        return DataLayoutSpecInterface();
-      });
+      .DefaultUnreachable("expected an op with data layout spec");
 }
 
 static TargetSystemSpecInterface getTargetSystemSpec(Operation *operation) {
@@ -734,6 +741,22 @@ Attribute mlir::DataLayout::getFunctionPointerAlignment() const {
     functionPointerAlignment =
         detail::getDefaultFunctionPointerAlignment(entry);
   return *functionPointerAlignment;
+}
+
+Attribute mlir::DataLayout::getLegalIntWidths() const {
+  checkValid();
+  if (legalIntWidths)
+    return *legalIntWidths;
+  DataLayoutEntryInterface entry;
+  if (originalLayout)
+    entry = originalLayout.getSpecForIdentifier(
+        originalLayout.getLegalIntWidthsIdentifier(
+            originalLayout.getContext()));
+  if (auto iface = dyn_cast_or_null<DataLayoutOpInterface>(scope))
+    legalIntWidths = iface.getLegalIntWidths(entry);
+  else
+    legalIntWidths = detail::getDefaultLegalIntWidths(entry);
+  return *legalIntWidths;
 }
 
 std::optional<Attribute> mlir::DataLayout::getDevicePropertyValue(

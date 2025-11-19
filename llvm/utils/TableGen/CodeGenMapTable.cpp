@@ -84,9 +84,9 @@
 #include "llvm/TableGen/Record.h"
 
 using namespace llvm;
-typedef std::map<std::string, std::vector<const Record *>> InstrRelMapTy;
-typedef std::map<std::vector<const Init *>, std::vector<const Record *>>
-    RowInstrMapTy;
+using InstrRelMapTy = std::map<std::string, std::vector<const Record *>>;
+using RowInstrMapTy =
+    std::map<std::vector<const Init *>, std::vector<const Record *>>;
 
 namespace {
 
@@ -358,7 +358,7 @@ const Record *MapTableEmitter::getInstrForColumn(const Record *KeyInstr,
 
 unsigned MapTableEmitter::emitBinSearchTable(raw_ostream &OS) {
   ArrayRef<const CodeGenInstruction *> NumberedInstructions =
-      Target.getInstructionsByEnumValue();
+      Target.getInstructions();
   StringRef Namespace = Target.getInstNamespace();
   ArrayRef<const ListInit *> ValueCols = InstrMapDesc.getValueCols();
   unsigned NumCol = ValueCols.size();
