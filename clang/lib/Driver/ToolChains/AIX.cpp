@@ -296,7 +296,7 @@ void aix::Linker::ConstructJob(Compilation &C, const JobAction &JA,
      "/asan.link_with_main_exec.txt")
         .toVector(SanRTSymbolList);
     if (llvm::sys::fs::exists(SanRTSymbolList))
-      CmdArgs.push_back(Args.MakeArgString(Twine("-bI:") + SanRTSymbolList));
+      CmdArgs.push_back(Args.MakeArgString(SanRTSymbolList));
     else
       ToolChain.getDriver().Diag(diag::err_drv_missing_sanitizer_file)
           << sanitizer << "import";
@@ -306,7 +306,7 @@ void aix::Linker::ConstructJob(Compilation &C, const JobAction &JA,
        "/asan_cxx.link_with_main_exec.txt")
           .toVector(SanRTSymbolList);
       if (llvm::sys::fs::exists(SanRTSymbolList))
-        CmdArgs.push_back(Args.MakeArgString(Twine("-bI:") + SanRTSymbolList));
+        CmdArgs.push_back(Args.MakeArgString(SanRTSymbolList));
       else
         ToolChain.getDriver().Diag(diag::err_drv_missing_sanitizer_file)
             << sanitizer << "C++ import";
