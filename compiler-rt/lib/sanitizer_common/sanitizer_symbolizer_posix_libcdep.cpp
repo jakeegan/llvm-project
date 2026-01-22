@@ -38,10 +38,36 @@
 // because we do not require a C++ ABI library to be linked to a program
 // using sanitizers; if it's not present, we'll just use the mangled name.
 namespace __cxxabiv1 {
+#  if !SANITIZER_AIX
 extern "C" SANITIZER_WEAK_ATTRIBUTE char *__cxa_demangle(const char *mangled,
                                                          char *buffer,
                                                          size_t *length,
                                                          int *status);
+#  else
+// `weak` attribute without definition on AIX will cause linking time undefined
+// symbol error, we use dlopen/dlsym here to find related symbol.
+typedef char *__cxa_demangle_t(const char *mangled, char *buffer,
+                               size_t *length, int *status);
+
+char *__cxa_demangle(const char *mangled, char *buffer, size_t *length,
+                     int *status) {
+  // Use NULL as the module name, so if the libc++abi module is linked into the
+  // main executable, we are able to find the __cxa_demangle symbol and this
+  // impelemtation will not force libc++abi to be loaded to the executable.
+  void *Handler = dlopen(0, RTLD_NOW);
+  if (!Handler) {
+    return nullptr;
+  }
+
+  auto FooPtr =
+      reinterpret_cast<__cxa_demangle_t *>(dlsym(Handler, "__cxa_demangle"));
+  if (!FooPtr) {
+    return nullptr;
+  }
+
+  return FooPtr(mangled, buffer, length, status);
+}
+#  endif
 }
 
 namespace __sanitizer {
@@ -156,30 +182,34 @@ bool SymbolizerProcess::StartSymbolizerSubprocess() {
     Printf("\n");
   }
 
+  fd_t infd[2] = {}, outfd[2] = {};
+  if (!CreateTwoHighNumberedPipes(infd, outfd)) {
+    Report(
+        "WARNING: Can't create a socket pair to start "
+        "external symbolizer (errno: %d)\n",
+        errno);
+    return false;
+  }
+
   if (use_posix_spawn_) {
 #  if SANITIZER_APPLE
-    fd_t fd = internal_spawn(argv, const_cast<const char **>(GetEnvP()), &pid);
-    if (fd == kInvalidFd) {
+    bool success = internal_spawn(argv, const_cast<const char**>(GetEnvP()),
+                                  &pid, outfd[0], infd[1]);
+    if (!success) {
       Report("WARNING: failed to spawn external symbolizer (errno: %d)\n",
              errno);
+      internal_close(infd[0]);
+      internal_close(outfd[1]);
       return false;
     }
 
-    input_fd_ = fd;
-    output_fd_ = fd;
+    // We intentionally hold on to the read-end so that we don't get a SIGPIPE
+    child_stdin_fd_ = outfd[0];
+
 #  else   // SANITIZER_APPLE
     UNIMPLEMENTED();
 #  endif  // SANITIZER_APPLE
   } else {
-    fd_t infd[2] = {}, outfd[2] = {};
-    if (!CreateTwoHighNumberedPipes(infd, outfd)) {
-      Report(
-          "WARNING: Can't create a socket pair to start "
-          "external symbolizer (errno: %d)\n",
-          errno);
-      return false;
-    }
-
     pid = StartSubprocess(path_, argv, GetEnvP(), /* stdin */ outfd[0],
                           /* stdout */ infd[1]);
     if (pid < 0) {
@@ -187,10 +217,10 @@ bool SymbolizerProcess::StartSymbolizerSubprocess() {
       internal_close(outfd[1]);
       return false;
     }
-
-    input_fd_ = infd[0];
-    output_fd_ = outfd[1];
   }
+
+  input_fd_ = infd[0];
+  output_fd_ = outfd[1];
 
   CHECK_GT(pid, 0);
 

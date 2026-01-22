@@ -33,6 +33,11 @@ uptr internal_close_range(fd_t lowfd, fd_t highfd, int flags);
 #  endif
 uptr internal_close(fd_t fd);
 
+#  if SANITIZER_AIX
+__sanitizer_FILE *internal_popen(const char *command, const char *type);
+int internal_pclose(__sanitizer_FILE *file);
+#  endif
+
 uptr internal_read(fd_t fd, void *buf, uptr count);
 uptr internal_write(fd_t fd, const void *buf, uptr count);
 
@@ -67,7 +72,8 @@ uptr internal_ptrace(int request, int pid, void *addr, void *data);
 uptr internal_waitpid(int pid, int *status, int options);
 
 int internal_fork();
-fd_t internal_spawn(const char *argv[], const char *envp[], pid_t *pid);
+bool internal_spawn(const char* argv[], const char* envp[], pid_t* pid,
+                    fd_t fd_stdin, fd_t fd_stdout);
 
 int internal_sysctl(const int *name, unsigned int namelen, void *oldp,
                     uptr *oldlenp, const void *newp, uptr newlen);

@@ -17,7 +17,10 @@
 //
 // https://code.google.com/p/address-sanitizer/issues/detail?id=263
 // XFAIL: android
-// UNSUPPORTED: ios
+// UNSUPPORTED: darwin-remote
+
+// FIXME: support -fsanitize-coverage on AIX.
+// UNSUPPORTED: target={{.*aix.*}}
 
 #include <assert.h>
 #include <stdio.h>

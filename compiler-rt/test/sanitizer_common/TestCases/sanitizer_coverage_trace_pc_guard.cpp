@@ -6,6 +6,10 @@
 // UNSUPPORTED: x86_64h-darwin && lsan
 // XFAIL: tsan
 // XFAIL: android && asan
+// XFAIL: darwin-remote
+
+// FIXME: support -fsanitize-coverage on AIX
+// UNSUPPORTED: target={{.*aix.*}}
 
 // RUN: rm -rf %t_workdir
 // RUN: mkdir -p %t_workdir

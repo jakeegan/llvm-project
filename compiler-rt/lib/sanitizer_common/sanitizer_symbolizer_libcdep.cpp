@@ -282,6 +282,9 @@ class LLVMSymbolizerProcess final : public SymbolizerProcess {
     const char *const kSymbolizerArch = "--default-arch=powerpc64";
 #  elif defined(__powerpc64__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     const char *const kSymbolizerArch = "--default-arch=powerpc64le";
+#  elif defined(__powerpc__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    // Must check __powerpc__ after __powerpc64__ because both can be set.
+    const char *const kSymbolizerArch = "--default-arch=powerpc";
 #  elif defined(__s390x__)
     const char *const kSymbolizerArch = "--default-arch=s390x";
 #  elif defined(__s390__)
@@ -476,16 +479,22 @@ const char *LLVMSymbolizer::FormatAndSendCommand(const char *command_prefix,
   return symbolizer_process_->SendCommand(buffer_);
 }
 
-SymbolizerProcess::SymbolizerProcess(const char *path, bool use_posix_spawn)
+SymbolizerProcess::SymbolizerProcess(const char* path, bool use_posix_spawn)
     : path_(path),
       input_fd_(kInvalidFd),
       output_fd_(kInvalidFd),
+      child_stdin_fd_(kInvalidFd),
       times_restarted_(0),
       failed_to_start_(false),
       reported_invalid_path_(false),
       use_posix_spawn_(use_posix_spawn) {
   CHECK(path_);
   CHECK_NE(path_[0], '\0');
+}
+
+SymbolizerProcess::~SymbolizerProcess() {
+  if (child_stdin_fd_ != kInvalidFd)
+    CloseFile(child_stdin_fd_);
 }
 
 static bool IsSameModule(const char *path) {
@@ -533,6 +542,10 @@ bool SymbolizerProcess::Restart() {
     CloseFile(input_fd_);
   if (output_fd_ != kInvalidFd)
     CloseFile(output_fd_);
+  if (child_stdin_fd_ != kInvalidFd) {
+    CloseFile(child_stdin_fd_);
+    child_stdin_fd_ = kInvalidFd;  // Don't free in destructor
+  }
   return StartSymbolizerSubprocess();
 }
 

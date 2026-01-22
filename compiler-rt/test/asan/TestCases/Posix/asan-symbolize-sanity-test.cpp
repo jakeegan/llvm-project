@@ -9,7 +9,11 @@
 // RUN: %env_asan_opts=symbolize=0 not %run %t 2>&1 | %asan_symbolize | FileCheck %s
 // REQUIRES: stable-runtime
 
-// UNSUPPORTED: ios
+// UNSUPPORTED: darwin-remote
+
+// Asan on AIX doesn't print the full path for user libraries or executables, so this test fails to
+// symbolize.
+// UNSUPPORTED: target={{.*}}-aix{{.*}}
 
 #if !defined(SHARED_LIB)
 #include <dlfcn.h>
