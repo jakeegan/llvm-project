@@ -63,22 +63,19 @@ INTERCEPTOR(void, cfree, void *ptr) {
 
 #  if SANITIZER_AIX
 INTERCEPTOR(void*, vec_malloc, uptr size) {
-  if (DlsymAlloc::Use())
-    return DlsymAlloc::Allocate(size);
   GET_STACK_TRACE_MALLOC;
   // Unlike malloc, vec_malloc must return memory aligned to 16 bytes.
   return asan_vec_malloc(size, &stack);
 }
 
 INTERCEPTOR(void*, vec_calloc, uptr nmemb, uptr size) {
-  if (DlsymAlloc::Use())
-    return DlsymAlloc::Callocate(nmemb, size);
   GET_STACK_TRACE_MALLOC;
   // Unlike calloc, vec_calloc must return memory aligned to 16 bytes.
   return asan_vec_calloc(nmemb, size, &stack);
 }
 #  endif
 
+// TODO: Fix malloc/calloc interceptors to return 16-byte alignment with AIX on PASE.
 INTERCEPTOR(void*, malloc, uptr size) {
   if (DlsymAlloc::Use())
     return DlsymAlloc::Allocate(size);
@@ -93,6 +90,9 @@ INTERCEPTOR(void*, calloc, uptr nmemb, uptr size) {
   return asan_calloc(nmemb, size, &stack);
 }
 
+// TODO: AIX needs a method to ensure 16-byte alignment if the incoming 
+// pointer was allocated with a 16-byte alignment requirement (or perhaps 
+// merely if it happens to have 16-byte alignment).
 INTERCEPTOR(void*, realloc, void *ptr, uptr size) {
   if (DlsymAlloc::Use() || DlsymAlloc::PointerIsMine(ptr))
     return DlsymAlloc::Realloc(ptr, size);
