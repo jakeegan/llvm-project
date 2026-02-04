@@ -1033,7 +1033,7 @@ void* asan_vec_malloc(uptr size, BufferedStackTrace* stack) {
 }
 
 void* asan_vec_calloc(uptr nmemb, uptr size, BufferedStackTrace* stack) {
-  return SetErrnoOnNull(instance.Calloc(nmemb, size, stack, 16);
+  return SetErrnoOnNull(instance.Calloc(nmemb, size, stack, 16));
 }
 #endif
 
