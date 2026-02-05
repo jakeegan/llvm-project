@@ -62,15 +62,19 @@ INTERCEPTOR(void, cfree, void *ptr) {
 #endif // SANITIZER_INTERCEPT_CFREE
 
 #  if SANITIZER_AIX
+// Unlike malloc, vec_malloc must return memory aligned to 16 bytes.
 INTERCEPTOR(void*, vec_malloc, uptr size) {
+  if (DlsymAlloc::Use())
+    return DlsymAlloc::Allocate(size, 16);
   GET_STACK_TRACE_MALLOC;
-  // Unlike malloc, vec_malloc must return memory aligned to 16 bytes.
   return asan_vec_malloc(size, &stack);
 }
 
+// Unlike calloc, vec_calloc must return memory aligned to 16 bytes.
 INTERCEPTOR(void*, vec_calloc, uptr nmemb, uptr size) {
+  if (DlsymAlloc::Use())
+    return DlsymAlloc::Callocate(nmemb, size, 16);
   GET_STACK_TRACE_MALLOC;
-  // Unlike calloc, vec_calloc must return memory aligned to 16 bytes.
   return asan_vec_calloc(nmemb, size, &stack);
 }
 #  endif
