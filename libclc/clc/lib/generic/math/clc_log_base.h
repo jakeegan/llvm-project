@@ -6,12 +6,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <clc/math/clc_fabs.h>
-#include <clc/math/clc_fma.h>
-#include <clc/math/clc_mad.h>
-#include <clc/math/math.h>
-#include <clc/relational/clc_isinf.h>
-#include <clc/relational/clc_isnan.h>
+#ifndef CLC_LIB_GENERIC_MATH_CLC_LOG_BASE_H
+#define CLC_LIB_GENERIC_MATH_CLC_LOG_BASE_H
+
+#include "clc/math/clc_fabs.h"
+#include "clc/math/clc_fma.h"
+#include "clc/math/clc_mad.h"
+#include "clc/math/math.h"
+#include "clc/relational/clc_isinf.h"
+#include "clc/relational/clc_isnan.h"
 
 /*
    Algorithm:
@@ -142,21 +145,21 @@ __clc_log(float x)
             __clc_as_float(0x3f000000 | (xin & MANTBITS_SP32));
 
   indx = indx >> 16;
-  r = f * USE_TABLE(log_inv_tbl, indx);
+  r = f * __CLC_USE_TABLE(log_inv_tbl, indx);
 
   // 1/3,  1/2
   float poly = __clc_mad(__clc_mad(r, 0x1.555556p-2f, 0.5f), r * r, r);
 
 #if defined(COMPILING_LOG2)
-  float2 tv = USE_TABLE(log2_tbl, indx);
+  float2 tv = __CLC_USE_TABLE(log2_tbl, indx);
   z1 = tv.s0 + mf;
   z2 = __clc_mad(poly, -LOG2E, tv.s1);
 #elif defined(COMPILING_LOG10)
-  float2 tv = USE_TABLE(log10_tbl, indx);
+  float2 tv = __CLC_USE_TABLE(log10_tbl, indx);
   z1 = __clc_mad(mf, LOG10_2_HEAD, tv.s0);
   z2 = __clc_mad(poly, -LOG10E, mf * LOG10_2_TAIL) + tv.s1;
 #else
-  float2 tv = USE_TABLE(log_tbl, indx);
+  float2 tv = __CLC_USE_TABLE(log_tbl, indx);
   z1 = __clc_mad(mf, LOG2_HEAD, tv.s0);
   z2 = __clc_mad(mf, LOG2_TAIL, -poly) + tv.s1;
 #endif
@@ -261,8 +264,8 @@ __clc_log(double x)
   int index = __clc_as_int2(ux).hi >> 13;
   index = ((0x80 | (index & 0x7e)) >> 1) + (index & 0x1);
 
-  double z1 = USE_TABLE(ln_tbl_lo, index - 64);
-  double q = USE_TABLE(ln_tbl_hi, index - 64);
+  double z1 = __CLC_USE_TABLE(ln_tbl_lo, index - 64);
+  double q = __CLC_USE_TABLE(ln_tbl_hi, index - 64);
 
   double f1 = index * 0x1.0p-7;
   double f2 = f - f1;
@@ -322,3 +325,5 @@ __clc_log(half x) {
 #endif
 
 #endif // cl_khr_fp16
+
+#endif // CLC_LIB_GENERIC_MATH_CLC_LOG_BASE_H

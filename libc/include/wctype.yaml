@@ -1,0 +1,40 @@
+header: wctype.h
+types:
+  - type_name: wint_t
+functions:
+  - name: iswalpha
+    standards:
+      - stdc
+    return_type: int
+    arguments:
+      - type: wint_t
+  - name: iswcntrl
+    standards:
+      - stdc
+    return_type: int
+    arguments:
+      - type: wint_t
+  - name: iswgraph
+    standards:
+      - stdc
+    return_type: int
+    arguments:
+      - type: wint_t
+  - name: iswlower
+    standards:
+      - stdc
+    return_type: int
+    arguments:
+      - type: wint_t
+  - name: iswspace
+    standards:
+      - stdc
+    return_type: int
+    arguments:
+      - type: wint_t
+  - name: iswblank
+    standards:
+      - stdc
+    return_type: int
+    arguments:
+      - type: wint_t
