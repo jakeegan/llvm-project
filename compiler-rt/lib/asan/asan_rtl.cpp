@@ -56,20 +56,20 @@ static void AsanDie() {
 
   if (flags()->unmap_shadow_on_exit) {
 #if SANITIZER_AIX && SANITIZER_WORDSIZE == 64
-    UnmapOrDie((void *)kHighShadowBeg, kHighShadowEnd - kHighShadowBeg);
-    UnmapOrDie((void *)kMidShadowBeg, kMidShadowEnd - kMidShadowBeg);
+    UnmapOrDie((void*)kHighShadowBeg, kHighShadowEnd - kHighShadowBeg);
+    UnmapOrDie((void*)kMidShadowBeg, kMidShadowEnd - kMidShadowBeg);
 
-    UnmapOrDie((void *)kMid2ShadowBeg, kMid2ShadowEnd - kMid2ShadowBeg);
-    UnmapOrDie((void *)kMid3ShadowBeg, kMid3ShadowEnd - kMid3ShadowBeg);
+    UnmapOrDie((void*)kMid2ShadowBeg, kMid2ShadowEnd - kMid2ShadowBeg);
+    UnmapOrDie((void*)kMid3ShadowBeg, kMid3ShadowEnd - kMid3ShadowBeg);
 
-    UnmapOrDie((void *)kLowShadowBeg, kLowShadowEnd - kLowShadowBeg);
+    UnmapOrDie((void*)kLowShadowBeg, kLowShadowEnd - kLowShadowBeg);
 #else
     if (kMidMemBeg) {
-      UnmapOrDie((void *)kLowShadowBeg, kMidMemBeg - kLowShadowBeg);
-      UnmapOrDie((void *)kMidMemEnd, kHighShadowEnd - kMidMemEnd);
+      UnmapOrDie((void*)kLowShadowBeg, kMidMemBeg - kLowShadowBeg);
+      UnmapOrDie((void*)kMidMemEnd, kHighShadowEnd - kMidMemEnd);
     } else {
       if (kHighShadowEnd)
-        UnmapOrDie((void *)kLowShadowBeg, kHighShadowEnd - kLowShadowBeg);
+        UnmapOrDie((void*)kLowShadowBeg, kHighShadowEnd - kLowShadowBeg);
     }
 #endif
   }
@@ -370,10 +370,10 @@ void PrintAddressSpaceLayout() {
            (void*)kMidShadowBeg, (void*)kMidShadowEnd);
   }
 #if SANITIZER_AIX && SANITIZER_WORDSIZE == 64
-  Printf("|| `[%p, %p]` || Mid2Shadow  ||\n", (void *)kMid2ShadowBeg,
-         (void *)kMid2ShadowEnd);
-  Printf("|| `[%p, %p]` || Mid3Shadow  ||\n", (void *)kMid3ShadowBeg,
-         (void *)kMid3ShadowEnd);
+  Printf("|| `[%p, %p]` || Mid2Shadow  ||\n", (void*)kMid2ShadowBeg,
+         (void*)kMid2ShadowEnd);
+  Printf("|| `[%p, %p]` || Mid3Shadow  ||\n", (void*)kMid3ShadowBeg,
+         (void*)kMid3ShadowEnd);
 #else
   Printf("|| `[%p, %p]` || ShadowGap  ||\n",
          (void*)kShadowGapBeg, (void*)kShadowGapEnd);
@@ -399,10 +399,10 @@ void PrintAddressSpaceLayout() {
   }
 // On AIX, for 64-bit, there are totally 3 mid memory regions.
 #if SANITIZER_AIX == 1 && SANITIZER_WORDSIZE == 64
-  Printf(" %p %p", (void *)MEM_TO_SHADOW(kMid2ShadowBeg),
-         (void *)MEM_TO_SHADOW(kMid2ShadowEnd));
-  Printf(" %p %p", (void *)MEM_TO_SHADOW(kMid3ShadowBeg),
-         (void *)MEM_TO_SHADOW(kMid3ShadowEnd));
+  Printf(" %p %p", (void*)MEM_TO_SHADOW(kMid2ShadowBeg),
+         (void*)MEM_TO_SHADOW(kMid2ShadowEnd));
+  Printf(" %p %p", (void*)MEM_TO_SHADOW(kMid3ShadowBeg),
+         (void*)MEM_TO_SHADOW(kMid3ShadowEnd));
 #endif
   Printf("\n");
   Printf("redzone=%zu\n", (uptr)flags()->redzone);
