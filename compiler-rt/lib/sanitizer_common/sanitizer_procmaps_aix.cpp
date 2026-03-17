@@ -22,9 +22,9 @@
 
 using namespace __sanitizer;
 
-static int qsort_comp(const void *va, const void *vb) {
-  auto *a = static_cast<const prmap_t *>(va);
-  auto *b = static_cast<const prmap_t *>(vb);
+static int qsort_comp(const void* va, const void* vb) {
+  auto* a = static_cast<const prmap_t*>(va);
+  auto* b = static_cast<const prmap_t*>(vb);
 
   if (a->pr_vaddr < b->pr_vaddr)
     return -1;
@@ -36,14 +36,16 @@ static int qsort_comp(const void *va, const void *vb) {
   return 0;
 }
 
-static prmap_t *SortProcMapEntries(char *buffer, uptr len) {
-  prmap_t *begin = reinterpret_cast<prmap_t *>(buffer);
-  prmap_t *bufferEnd = reinterpret_cast<prmap_t *>(buffer + len);
-  prmap_t *mapIter = begin;
+static prmap_t* SortProcMapEntries(char* buffer, uptr len) {
+  prmap_t* begin = reinterpret_cast<prmap_t*>(buffer);
+  prmap_t* bufferEnd = reinterpret_cast<prmap_t*>(buffer + len);
+  prmap_t* mapIter = begin;
   // The AIX procmap utility detects the end of the array of `prmap`s by finding
   // an entry where pr_size and pr_vaddr are both zero.
-  while (mapIter < bufferEnd && (mapIter->pr_size != 0 || mapIter->pr_vaddr != 0)) ++mapIter;
-  prmap_t *end = mapIter;
+  while (mapIter < bufferEnd &&
+         (mapIter->pr_size != 0 || mapIter->pr_vaddr != 0))
+    ++mapIter;
+  prmap_t* end = mapIter;
 
   size_t count = end - begin;
   size_t elemSize = sizeof(prmap_t);
@@ -52,11 +54,12 @@ static prmap_t *SortProcMapEntries(char *buffer, uptr len) {
   return end;
 }
 
-void __sanitizer::ReadProcMaps(ProcSelfMapsBuff *proc_maps) {
+void __sanitizer::ReadProcMaps(ProcSelfMapsBuff* proc_maps) {
   uptr pid = internal_getpid();
   constexpr unsigned BUFFER_SIZE = 128;
   char filenameBuf[BUFFER_SIZE] = {};
-  int filenameLen = internal_snprintf(filenameBuf, BUFFER_SIZE, "/proc/%d/map", pid);
+  int filenameLen =
+      internal_snprintf(filenameBuf, BUFFER_SIZE, "/proc/%d/map", pid);
   CHECK_GE(filenameLen, 0);
   CHECK_LT(filenameLen, static_cast<int>(BUFFER_SIZE));
   if (!ReadFileToBuffer(filenameBuf, &proc_maps->data, &proc_maps->mmaped_size,
@@ -71,11 +74,11 @@ void __sanitizer::ReadProcMaps(ProcSelfMapsBuff *proc_maps) {
   proc_maps->mapEnd = SortProcMapEntries(proc_maps->data, proc_maps->len);
 }
 
-bool __sanitizer::MemoryMappingLayout::Next(MemoryMappedSegment *segment) {
+bool __sanitizer::MemoryMappingLayout::Next(MemoryMappedSegment* segment) {
   if (Error())
     return false;  // simulate empty maps
 
-  auto *mapIter = reinterpret_cast<const prmap_t *>(data_.current);
+  auto* mapIter = reinterpret_cast<const prmap_t*>(data_.current);
 
   if (mapIter >= data_.proc_self_maps.mapEnd)
     return false;
@@ -112,22 +115,23 @@ bool __sanitizer::MemoryMappingLayout::Next(MemoryMappedSegment *segment) {
     // TODO: Pass a separate path from mapIter->pr_pathoff to display to the
     // user.
     // FIXME: Append the archive member name if it exists.
-    int objPathLen = internal_snprintf(segment->filename, segment->filename_size,
-      "/proc/%d/object/%s", internal_getpid(), mapIter->pr_mapname);
+    int objPathLen = internal_snprintf(
+        segment->filename, segment->filename_size, "/proc/%d/object/%s",
+        internal_getpid(), mapIter->pr_mapname);
     if (objPathLen < 0)
       segment->filename[0] = 0;
   } else if (segment->filename) {
     segment->filename[0] = 0;
   }
 
-  // AIX does not report the offset into any loaded modules. The offset into the module
-  // is best handled by recording the segment type and having the symbolizer determine
-  // the offset using that.
+  // AIX does not report the offset into any loaded modules. The offset into the
+  // module is best handled by recording the segment type and having the
+  // symbolizer determine the offset using that.
   // FIXME: Record the segment type.
   segment->offset = 0;
 
   ++mapIter;
-  data_.current = reinterpret_cast<const char *>(mapIter);
+  data_.current = reinterpret_cast<const char*>(mapIter);
 
   return true;
 }
