@@ -42,7 +42,7 @@ static prmap_t* SortProcMapEntries(char* buffer, uptr len) {
   prmap_t* mapIter = begin;
   // The AIX procmap utility detects the end of the array of `prmap`s by finding
   // an entry where pr_size and pr_vaddr are both zero.
-  while (reinterpret_cast<char *>(mapIter) < bufferEnd &&
+  while (reinterpret_cast<char*>(mapIter) < bufferEnd &&
          (mapIter->pr_size != 0 || mapIter->pr_vaddr != 0))
     ++mapIter;
   prmap_t* end = mapIter;
