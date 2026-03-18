@@ -24,18 +24,18 @@ typedef struct prmap prmap_t;
 namespace __sanitizer {
 
 struct ProcSelfMapsBuff {
-  char *data;
+  char* data;
   uptr mmaped_size;
   uptr len;
-  prmap_t *mapEnd;
+  prmap_t* mapEnd;
 };
 
 struct MemoryMappingLayoutData {
   ProcSelfMapsBuff proc_self_maps;
-  const char *current;
+  const char* current;
 };
 
-void ReadProcMaps(ProcSelfMapsBuff *proc_maps);
+void ReadProcMaps(ProcSelfMapsBuff* proc_maps);
 
 }  // namespace __sanitizer
 
