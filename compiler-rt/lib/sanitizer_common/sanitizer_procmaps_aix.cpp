@@ -38,11 +38,11 @@ static int qsort_comp(const void* va, const void* vb) {
 
 static prmap_t* SortProcMapEntries(char* buffer, uptr len) {
   prmap_t* begin = reinterpret_cast<prmap_t*>(buffer);
-  prmap_t* bufferEnd = reinterpret_cast<prmap_t*>(buffer + len);
+  const char* bufferEnd = buffer + len;
   prmap_t* mapIter = begin;
   // The AIX procmap utility detects the end of the array of `prmap`s by finding
   // an entry where pr_size and pr_vaddr are both zero.
-  while (mapIter < bufferEnd &&
+  while (reinterpret_cast<char *>(mapIter) < bufferEnd &&
          (mapIter->pr_size != 0 || mapIter->pr_vaddr != 0))
     ++mapIter;
   prmap_t* end = mapIter;
@@ -109,7 +109,7 @@ bool __sanitizer::MemoryMappingLayout::Next(MemoryMappedSegment* segment) {
     segment->protection |= kProtectionShared;
 
   // Handle filenames for loaded objects.
-  // pr_pathoff is non-zero if the map entry is for a loaded object.
+  // pr_pathoff is non-zero iff the map entry is for a loaded object.
   if (segment->filename && mapIter->pr_pathoff) {
     // Use path /proc/<pid>/object/<object_id>.
     // TODO: Pass a separate path from mapIter->pr_pathoff to display to the
