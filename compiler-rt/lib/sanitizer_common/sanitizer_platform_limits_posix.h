@@ -598,7 +598,7 @@ typedef long __sanitizer_clock_t;
 
 #  if SANITIZER_LINUX || SANITIZER_HAIKU || SANITIZER_AIX
 typedef int __sanitizer_clockid_t;
-#endif
+#  endif
 #  if SANITIZER_LINUX || SANITIZER_HAIKU
 typedef unsigned long long __sanitizer_eventfd_t;
 #  endif
